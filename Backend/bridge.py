@@ -11,6 +11,10 @@ from .brain import AssistantBrain
 class VoiceListener(QObject):
     """Background microphone worker for hands-free Bengali and English speech recognition."""
 
+    speech_started = Signal()
+    utterance_recognized = Signal(str)
+    log_status = Signal(str, str)
+
     # Common English words used to decide which transcript is the real one.
     _EN_WORDS = {
         "open", "launch", "close", "play", "search", "volume", "sound", "mute", "unmute",
