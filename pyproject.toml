@@ -1,0 +1,127 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "computer-control-agent"
+version = "6.0.0"
+description = "Ultra type-safe autonomous desktop automation agent"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [{ name = "Computer Control Agent" }]
+keywords = ["automation", "agent", "accessibility", "type-safe"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.6",
+    "typing-extensions>=4.10",
+]
+
+[project.optional-dependencies]
+gui = ["pyautogui>=0.9.54", "pillow>=10.0", "mss>=9.0", "pyperclip>=1.8"]
+ocr = ["pytesseract>=0.3.10", "pillow>=10.0"]
+ocr-easy = ["easyocr>=1.7"]
+web = ["playwright>=1.40"]
+llm = ["anthropic>=0.25"]
+memory = ["sentence-transformers>=2.6"]
+win = ["pycaw", "comtypes", "uiautomation", "screen-brightness-control"]
+mac = ["pyobjc-framework-ApplicationServices"]
+linux = ["pyatspi"]
+dev = [
+    "mypy>=1.9",
+    "ruff>=0.4",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "hypothesis>=6.100",
+    "coverage>=7.4",
+]
+all = [
+    "computer-control-agent[gui,ocr,web,llm,dev]",
+]
+
+[project.scripts]
+agent = "agent.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/example/computer-control-agent"
+
+[tool.setuptools.packages.find]
+include = ["agent*"]
+
+[tool.setuptools.package-data]
+agent = ["py.typed"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_any_generics = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+no_implicit_reexport = true
+check_untyped_defs = true
+strict_equality = true
+extra_checks = true
+plugins = ["pydantic.mypy"]
+mypy_path = "."
+explicit_package_bases = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["agent", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "N", "UP", "B", "SIM", "RUF", "ANN",
+    "ASYNC", "S", "T20", "PT", "RET", "SLOT", "TID", "PTH",
+]
+ignore = [
+    "S101",   # assert is fine in library + tests
+    "S104",   # binding is not a server
+    "S110",   # try/except pass is intentional at OS boundaries
+    "S603",   # subprocess with known argv lists
+    "S607",   # platform tools resolved via PATH (amixer, osascript)
+    "ANN401", # we deliberately avoid Any; ignore if it fires
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["T20", "S105", "S106"]
+"agent/cli.py" = ["T20"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["error"]
+addopts = "-q --strict-markers --strict-config"
+
+[tool.coverage.run]
+branch = true
+source = ["agent"]
+
+[tool.coverage.report]
+fail_under = 0
+show_missing = true
+skip_empty = true

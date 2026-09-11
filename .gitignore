@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+.env.*
+
+# Tools
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Agent runtime artefacts
+audit.jsonl
+episodes.jsonl
+star_memory.db
+star_memory.db-*
+*.png
+!docs/**
+Backend/cache/
+*.mp3
+use and throw/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
