@@ -23,7 +23,7 @@ def execute_autonomous_goal(goal: str) -> Dict[str, Any]:
     """
     try:
         bridge = get_agent_bridge()
-        res = bridge.run(goal)
+        res = bridge.run(goal, timeout=120.0)
         return {
             "success": res.get("ok", False),
             "state": res.get("state"),

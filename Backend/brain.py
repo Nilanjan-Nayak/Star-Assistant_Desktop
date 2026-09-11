@@ -35,9 +35,15 @@ class AssistantBrain:
         response_text = result.get("response", "")
         actions = result.get("actions", [])
 
-        # 3. Persist episodic memory if meaningful conversation
+        # 3. Persist episodic memory for genuine CONVERSATION only.
+        # FIX: command/action turns used to be stored as episodes too — the
+        # memory then filled with junk like 'volume barao -> adjust_volume',
+        # and that junk was later injected into prompts / dumped as answers.
         clean_q = query.strip().lower()
-        if response_text and len(clean_q) > 3:
+        is_command = bool(actions) or result.get("source", "").startswith(
+            ("command_router", "offline_intent", "screen_vision", "memory_store")
+        )
+        if response_text and len(clean_q) > 3 and not is_command:
             if not any(clean_q == g for g in ["hi", "hello", "hey", "হাই", "হ্যালো", "শোনো"]):
                 self.agent.remember(f"User said: '{query}' -> Assistant answered: '{response_text}'", kind="episode")
 

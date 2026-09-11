@@ -3,7 +3,7 @@ import re
 import time
 import threading
 import pygame
-from PySide6.QtCore import QObject, Signal, QThread
+from PySide6.QtCore import QObject, Signal, QThread, QTimer
 
 from .brain import AssistantBrain
 
@@ -11,9 +11,17 @@ from .brain import AssistantBrain
 class VoiceListener(QObject):
     """Background microphone worker for hands-free Bengali and English speech recognition."""
 
-    speech_started = Signal()
-    utterance_recognized = Signal(str)
-    log_status = Signal(str, str)
+    # Common English words used to decide which transcript is the real one.
+    _EN_WORDS = {
+        "open", "launch", "close", "play", "search", "volume", "sound", "mute", "unmute",
+        "brightness", "how", "are", "you", "who", "what", "is", "your", "my", "name",
+        "calculate", "screenshot", "lock", "the", "a", "an", "please", "can", "could",
+        "would", "tell", "me", "time", "date", "today", "tomorrow", "weather", "news",
+        "stop", "start", "set", "increase", "decrease", "take", "read", "screen",
+        "song", "music", "video", "on", "for", "to", "hello", "hi", "hey", "thanks",
+        "thank", "good", "morning", "night", "remember", "remind", "when", "where",
+        "why", "which", "do", "does", "did", "i", "we", "it", "this", "that", "and",
+    }
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -22,6 +30,26 @@ class VoiceListener(QObject):
         self._last_resume_time = 0.0
         self._thread = threading.Thread(target=self._run, daemon=True, name="voice-listener")
         self._thread.start()
+
+    @classmethod
+    def _prefer_english(cls, t_en: str, t_bn: str) -> bool:
+        """Score both transcripts; prefer English when it looks genuinely English.
+
+        The Bengali (bn-IN) recognizer often transliterates English speech into
+        Bengali script, which then matches nothing.  If the English transcript
+        contains ≥2 recognised common English words we trust it; otherwise keep
+        the Bengali one (our NLU handles Bengali script and Banglish natively).
+        """
+        words = re.findall(r"[a-zA-Z']+", t_en.lower())
+        if not words:
+            return False
+        hits = sum(1 for w in words if w in cls._EN_WORDS)
+        if hits >= 2:
+            return True
+        # Short single-word commands ("play", "stop"…) — also trust English.
+        if len(words) <= 2 and words[0] in cls._EN_WORDS:
+            return True
+        return False
 
     def pause(self):
         self._paused = True
@@ -34,6 +62,19 @@ class VoiceListener(QObject):
         self._running = False
 
     def _run(self):
+        # FIX: any unexpected crash used to kill the listener thread silently —
+        # the assistant then never heard anything again until restart.  Now the
+        # loop self-heals with a short backoff.
+        while self._running:
+            try:
+                self._run_once()
+            except Exception as e:
+                print(f"[VoiceListener] Continuous mic loop error: {e}")
+                self.log_status.emit(f"[Voice Error] {e} — আবার চালু হচ্ছে...", "alert")
+            if self._running:
+                time.sleep(1.5)  # brief backoff before restarting the mic loop
+
+    def _run_once(self):
         try:
             import speech_recognition as sr
             import concurrent.futures
@@ -48,76 +89,68 @@ class VoiceListener(QObject):
         except Exception as e:
             print(f"[VoiceListener] Microphone init warning: {e}")
             self.log_status.emit(f"[Mic Error] {e}", "alert")
+            time.sleep(3.0)
             return
 
-        try:
-            with mic as source:
-                self.log_status.emit("[Voice] Calibrating ambient noise...", "cyan")
-                recognizer.adjust_for_ambient_noise(source, duration=0.6)
-                self.log_status.emit("[Voice] Google Recognizer চালু আছে (বাংলা/English)...", "ok")
+        with mic as source:
+            self.log_status.emit("[Voice] Calibrating ambient noise...", "cyan")
+            recognizer.adjust_for_ambient_noise(source, duration=0.6)
+            self.log_status.emit("[Voice] Google Recognizer চালু আছে (বাংলা/English)...", "ok")
 
-                while self._running:
-                    if self._paused:
-                        time.sleep(0.08)
-                        continue
+            while self._running:
+                if self._paused:
+                    time.sleep(0.08)
+                    continue
 
+                try:
+                    audio = recognizer.listen(source, timeout=1.8, phrase_time_limit=12)
+                except sr.WaitTimeoutError:
+                    continue
+                except Exception as e:
+                    time.sleep(0.1)
+                    continue
+
+                # If paused while listening, discard immediately
+                if not self._running or self._paused:
+                    continue
+
+                # If unpaused within last 0.4s, ignore any residual room echo
+                if (time.time() - self._last_resume_time) < 0.4:
+                    continue
+
+                self.speech_started.emit()
+
+                # Run Google bn-IN and en-IN concurrently for 2x faster recognition
+                def _query_google(lang):
                     try:
-                        audio = recognizer.listen(source, timeout=1.8, phrase_time_limit=12)
-                    except sr.WaitTimeoutError:
-                        continue
-                    except Exception as e:
-                        time.sleep(0.1)
-                        continue
+                        return recognizer.recognize_google(audio, language=lang)
+                    except Exception:
+                        return None
 
-                    # If paused while listening, discard immediately
-                    if not self._running or self._paused:
-                        continue
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    f_bn = executor.submit(_query_google, "bn-IN")
+                    f_en = executor.submit(_query_google, "en-IN")
+                    t_bn = f_bn.result()
+                    t_en = f_en.result()
 
-                    # If unpaused within last 0.4s, ignore any residual room echo
-                    if (time.time() - self._last_resume_time) < 0.4:
-                        continue
+                # Smart selection between Bengali and English
+                text = None
+                if t_bn and t_en:
+                    text = t_en if self._prefer_english(t_en, t_bn) else t_bn
+                elif t_bn:
+                    text = t_bn
+                elif t_en:
+                    text = t_en
 
-                    self.speech_started.emit()
+                if not self._running or self._paused:
+                    continue
 
-                    # Run Google bn-IN and en-IN concurrently for 2x faster recognition
-                    def _query_google(lang):
-                        try:
-                            return recognizer.recognize_google(audio, language=lang)
-                        except Exception:
-                            return None
-
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                        f_bn = executor.submit(_query_google, "bn-IN")
-                        f_en = executor.submit(_query_google, "en-IN")
-                        t_bn = f_bn.result()
-                        t_en = f_en.result()
-
-                    # Smart selection between Bengali and English
-                    text = None
-                    if t_bn and t_en:
-                        en_lower = t_en.lower()
-                        is_eng_command = any(en_lower.startswith(cmd) for cmd in [
-                            "open", "launch", "close", "play", "search", "volume", "sound", "mute", "unmute",
-                            "brightness", "how are you", "who are you", "what is", "calculate", "screenshot", "lock"
-                        ])
-                        text = t_en if is_eng_command else t_bn
-                    elif t_bn:
-                        text = t_bn
-                    elif t_en:
-                        text = t_en
-
-                    if not self._running or self._paused:
-                        continue
-
-                    if text and text.strip():
-                        clean = text.strip()
-                        self.log_status.emit(f"[Google STT] শোনায় পেলাম: '{clean}'", "cyan")
-                        clean = re.sub(r"^(?:bhai|bhaiya|dada|please|ektu|zara|shono|suno|star|স্টার|hey star)\s+", "", clean, flags=re.IGNORECASE).strip(" ,.-")
-                        target = clean if clean else "hey star"
-                        self.utterance_recognized.emit(target)
-        except Exception as e:
-            print(f"[VoiceListener] Continuous mic loop error: {e}")
-            self.log_status.emit(f"[Voice Error] {e}", "alert")
+                if text and text.strip():
+                    clean = text.strip()
+                    self.log_status.emit(f"[Google STT] শোনায় পেলাম: '{clean}'", "cyan")
+                    clean = re.sub(r"^(?:bhai|bhaiya|dada|please|ektu|zara|shono|suno|star|স্টার|hey star)\s+", "", clean, flags=re.IGNORECASE).strip(" ,.-")
+                    target = clean if clean else "hey star"
+                    self.utterance_recognized.emit(target)
 
 
 class SpeechPlayer(QObject):
@@ -191,10 +224,25 @@ class BrainWorker(QThread):
 
     def run(self):
         self.thinking_started.emit()
-        result = self.brain.process(self.query)
-        for act in result.get("actions", []):
-            self.action_performed.emit(act)
-        self.response_ready.emit(result)
+        try:
+            result = self.brain.process(self.query)
+        except Exception as e:
+            # FIX: an unhandled exception used to kill this QThread silently —
+            # neither response_ready nor speaking_finished fired, so the mic
+            # stayed paused forever and Star appeared dead.  Always answer.
+            print(f"[BrainWorker] Brain error: {e}")
+            result = {
+                "response": "মাফ করো বন্ধু, ভেতরে একটু ঝামেলা হয়েছিল। এখন আমি ঠিক আছি — আবার বলো তো!",
+                "audio_path": None,
+                "actions": [],
+                "source": "error_recovery",
+            }
+        try:
+            for act in result.get("actions", []):
+                self.action_performed.emit(act)
+            self.response_ready.emit(result)
+        except Exception as e:
+            print(f"[BrainWorker] Signal emission error: {e}")
 
 
 class AssistantBridge(QObject):
@@ -216,6 +264,10 @@ class AssistantBridge(QObject):
         self.player = SpeechPlayer(self)
         self.player.started.connect(self._on_playback_started)
         self.player.finished.connect(self._on_playback_finished)
+
+        # Keep strong references to running brain workers (GC safety)
+        self._workers = set()
+        self._query_seq = 0
 
         self._active_worker = None
 
@@ -239,6 +291,12 @@ class AssistantBridge(QObject):
         self.speaking_started.emit()
 
     def _on_playback_finished(self):
+        # If a brain query is being processed (e.g. speech was interrupted by a
+        # new command), leave state & mic alone — the query's own response
+        # handler manages them.  Otherwise finish speaking cleanly.
+        worker = getattr(self, "_active_worker", None)
+        if worker is not None and worker.isRunning():
+            return
         self.state_changed.emit("idle")
         self.speaking_finished.emit()
         self.voice_listener.resume()
@@ -279,12 +337,19 @@ class AssistantBridge(QObject):
 
         self.log_emitted.emit(f"▸ {query}", "cyan")
         self.state_changed.emit("think")
+        self._query_seq += 1
 
-        # Launch background worker
-        self._active_worker = BrainWorker(self.brain, query, self)
-        self._active_worker.action_performed.connect(self._on_action_performed)
-        self._active_worker.response_ready.connect(self._on_response_ready)
-        self._active_worker.start()
+        # Launch background worker.
+        # FIX: workers are kept alive until they finish — replacing the only
+        # reference mid-run used to let Python GC the QThread while running
+        # ("QThread: Destroyed while thread is still running" crash).
+        worker = BrainWorker(self.brain, query, self)
+        worker.action_performed.connect(self._on_action_performed)
+        worker.response_ready.connect(self._on_response_ready)
+        worker.finished.connect(lambda w=worker: self._workers.discard(w))
+        self._workers.add(worker)
+        self._active_worker = worker
+        worker.start()
 
     def _on_action_performed(self, action: dict):
         tool_name = action.get("tool", "unknown")
@@ -304,9 +369,18 @@ class AssistantBridge(QObject):
         if audio_path and os.path.exists(audio_path):
             self.player.play_file(audio_path)
         else:
-            # If no audio, flash speak briefly then idle and resume mic
+            # If no audio, flash "speak" briefly on the UI thread.
+            # FIX: time.sleep(0.8) here froze the whole Qt GUI for 0.8s after
+            # every response; a QTimer keeps the interface responsive and the
+            # mic resume stays guaranteed.
             self.state_changed.emit("speak")
-            time.sleep(0.8)
-            self.state_changed.emit("idle")
-            self.voice_listener.resume()
+            seq = self._query_seq
+            QTimer.singleShot(800, lambda: self._finish_silent_response(seq))
+
+    def _finish_silent_response(self, seq: int):
+        if seq != self._query_seq:
+            return  # a newer query took over — it manages the mic itself
+        self.state_changed.emit("idle")
+        self.speaking_finished.emit()
+        self.voice_listener.resume()
 

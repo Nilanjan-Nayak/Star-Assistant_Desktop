@@ -6,6 +6,17 @@ from agent.planning.memory import EpisodicMemory
 from agent.planning.step import PlanStep
 from agent.world.model import WorldModel
 
+import re
+from typing import Match
+
+_BN_DIGIT_TRANS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
+_NUMBER_IN_GOAL: "re.Pattern[str]" = re.compile(r"(\d+)\s*%?")
+
+
+def _goal_number(goal: str) -> "Match[str] | None":
+    return _NUMBER_IN_GOAL.search(goal.lower().translate(_BN_DIGIT_TRANS))
+
+
 
 class StubPlanner:
     """Deterministic keyword planner for tests / no-LLM usage.
@@ -49,15 +60,23 @@ class StubPlanner:
             )
         if "volume" in gl and volume not in done:
             level = store.preferred_int("volume.level", 70) if store else 70
+            # An explicit number in the goal beats the remembered preference
+            # ("set volume to 40", "volume 30 koro", Bengali digits too).
+            m = _goal_number(gl)
+            if m:
+                level = max(0, min(100, int(m.group(1))))
             return PlanStep(
-                thought=f"Setting volume to remembered level {level}",
+                thought=f"Setting volume to level {level}",
                 skill=volume,
                 params={"level": level},
             )
         if "brightness" in gl and brightness not in done:
             level = store.preferred_int("brightness.level", 80) if store else 80
+            m = _goal_number(gl)
+            if m:
+                level = max(0, min(100, int(m.group(1))))
             return PlanStep(
-                thought=f"Setting brightness to remembered level {level}",
+                thought=f"Setting brightness to level {level}",
                 skill=brightness,
                 params={"level": level},
             )

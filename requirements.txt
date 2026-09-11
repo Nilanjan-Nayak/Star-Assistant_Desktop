@@ -1,0 +1,33 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  STAR ASSISTANT — Complete Dependencies (root)
+#  Install:  pip install -r requirements.txt
+#
+#  NOTE (Windows): PyAudio wheels ship with pip on Python 3.8–3.12.  If the
+#  install fails use:  pip install pipwin && pipwin install pyaudio
+#  NOTE (OCR): pytesseract also needs the Tesseract-OCR engine installed
+#  (https://github.com/UB-Mannheim/tesseract/wiki).  Without it, screen
+#  reading degrades gracefully — everything else keeps working.
+# ═══════════════════════════════════════════════════════════════════════
+
+# ── UI (PySide6 HUD) ──
+PySide6>=6.5
+
+# ── Voice loop ──
+SpeechRecognition>=3.10
+PyAudio>=0.2.13
+pygame>=2.5
+edge-tts>=6.1
+
+# ── Brain / agent core ──
+pydantic>=2.6
+typing-extensions>=4.10
+
+# ── System control (Windows) ──
+pyautogui>=0.9.54
+pycaw>=20230407
+comtypes>=1.2
+screen-brightness-control>=0.22
+Pillow>=10.0
+mss>=9.0
+pytesseract>=0.3.10
+psutil>=5.9

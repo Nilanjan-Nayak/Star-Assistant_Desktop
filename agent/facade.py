@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from types import TracebackType
-from typing import Self
+from typing import Callable, Self
 
 from agent.core.enums import HealthStatus, MemoryKind
 from agent.core.health import HEALTH, HealthReport
@@ -49,6 +49,7 @@ class ComputerControlAgent:
         memory_path: Path | str = Path("star_memory.db"),
         owner: str = "user",
         sync: SyncBackend | None = None,
+        planner_factory: "Callable[[MemoryStore], Planner] | None" = None,
     ) -> None:
         cfg = governor_config or GovernorConfig()
         cfg.dry_run = dry_run
@@ -79,7 +80,17 @@ class ComputerControlAgent:
         self.memory = EpisodicMemory()
         self.semantic = MemoryStore(memory_path, owner=owner)
         self.sync = sync
-        chosen_planner = planner or StubPlanner(semantic=self.semantic)
+        # A planner_factory lets embedders build the planner with the real
+        # semantic store (e.g. the LLM planner injected from Backend).
+        if planner is not None:
+            chosen_planner = planner
+        elif planner_factory is not None:
+            try:
+                chosen_planner = planner_factory(self.semantic)
+            except Exception:
+                chosen_planner = StubPlanner(semantic=self.semantic)
+        else:
+            chosen_planner = StubPlanner(semantic=self.semantic)
         self.agent = ReActAgent(
             registry=self.registry,
             motor=self.motor,

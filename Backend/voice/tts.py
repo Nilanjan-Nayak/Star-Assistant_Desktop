@@ -33,7 +33,21 @@ def clean_for_speech(text: str) -> str:
 
 
 class VoiceEngine:
-    """Free Neural Speech Synthesizer."""
+    """Free Neural Speech Synthesizer with a multi-voice fallback chain."""
+
+    # Bengali fallback chain — if the primary neural voice is unavailable
+    # (network hiccup / voice retirement), the next one is tried automatically.
+    BN_VOICES = [
+        TTS_VOICE,
+        "bn-IN-TanishaaNeural",
+        "bn-BD-PradeepNeural",
+        "bn-BD-NabanitaNeural",
+    ]
+    EN_VOICES = [
+        "en-IN-NeerjaExpressiveNeural",
+        "en-IN-NeerjaNeural",
+        "en-GB-SoniaNeural",
+    ]
 
     def __init__(self, voice: str = TTS_VOICE):
         self.voice = voice
@@ -41,6 +55,9 @@ class VoiceEngine:
         self.pitch = TTS_PITCH
         self.cache_dir = Path(AUDIO_CACHE_DIR)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # Remember which voice last worked so retries start there
+        self._last_good_bn = voice
+        self._last_good_en = self.EN_VOICES[0]
 
     def synthesize(self, text: str) -> Optional[str]:
         """Convert text to speech and return path to saved .mp3 file."""
@@ -53,16 +70,41 @@ class VoiceEngine:
             spoken_text = text.strip()
 
         has_bengali = any('\u0980' <= ch <= '\u09ff' for ch in spoken_text)
-        voice = self.voice if has_bengali else "en-IN-NeerjaExpressiveNeural"
 
-        # Hash text + voice settings for instant disk cache hit
+        # Build a voice candidate chain: last-good first, then the rest
+        if has_bengali:
+            chain = [self._last_good_bn] + [v for v in self.BN_VOICES if v != self._last_good_bn]
+        else:
+            chain = [self._last_good_en] + [v for v in self.EN_VOICES if v != self._last_good_en]
+
+        # Disk-cache hit first (chain head = usually the same voice)
+        for voice in chain:
+            out_file = self._cache_path(spoken_text, voice)
+            if out_file.exists() and out_file.stat().st_size > 0:
+                self._remember_good(voice, has_bengali)
+                return str(out_file)
+
+        for voice in chain:
+            out_file = self._cache_path(spoken_text, voice)
+            if self._edge_synthesize(spoken_text, voice, out_file):
+                self._remember_good(voice, has_bengali)
+                return str(out_file)
+
+        # All neural voices failed (offline?) → Windows SAPI fallback
+        return self._offline_fallback(text, self._cache_path(spoken_text, chain[0]))
+
+    def _cache_path(self, spoken_text: str, voice: str) -> Path:
         key = f"{spoken_text}_{voice}_{self.rate}_{self.pitch}".encode("utf-8")
-        h = hashlib.md5(key).hexdigest()
-        out_file = self.cache_dir / f"tts_{h}.mp3"
+        return self.cache_dir / f"tts_{hashlib.md5(key).hexdigest()}.mp3"
 
-        if out_file.exists() and out_file.stat().st_size > 0:
-            return str(out_file)
+    def _remember_good(self, voice: str, has_bengali: bool) -> None:
+        if has_bengali:
+            self._last_good_bn = voice
+        else:
+            self._last_good_en = voice
 
+    def _edge_synthesize(self, spoken_text: str, voice: str, out_file: Path) -> bool:
+        """One Edge-TTS attempt; True on success."""
         try:
             import edge_tts
 
@@ -85,13 +127,18 @@ class VoiceEngine:
                 new_loop.close()
 
             if out_file.exists() and out_file.stat().st_size > 0:
-                return str(out_file)
-
+                return True
+            # Clean up zero-byte artifacts so the cache is never poisoned
+            if out_file.exists():
+                out_file.unlink(missing_ok=True)
         except Exception as e:
-            print(f"[TTS] Edge-TTS error: {e}. Attempting offline SAPI fallback...")
-            return self._offline_fallback(text, out_file)
-
-        return None
+            print(f"[TTS] Edge-TTS error ({voice}): {e}")
+            if out_file.exists():
+                try:
+                    out_file.unlink()
+                except Exception:
+                    pass
+        return False
 
     def _offline_fallback(self, text: str, target_file: Path) -> Optional[str]:
         """Offline fallback using Windows SAPI5 / pyttsx3."""

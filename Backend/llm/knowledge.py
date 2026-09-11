@@ -669,6 +669,52 @@ TRAILING_FILLER_PATTERN = re.compile(
 PUNCTUATION_PATTERN = re.compile(r"[!?,.:;\"\'\(\)\[\]{}—\-_/\\@#$%^&*+=<>~`]")
 MULTISPACE_PATTERN = re.compile(r"\s+")
 
+# ── Bengali → Roman transliteration (internal, replaces the missing
+#    `star.brain.translit` module — that import silently failed forever).
+_BN_TO_ROMAN_MAP = {
+    "অ": "a", "আ": "a", "ই": "i", "ঈ": "i", "উ": "u", "ঊ": "u", "ঋ": "ri",
+    "এ": "e", "ঐ": "oi", "ও": "o", "ঔ": "ou", "ক": "k", "খ": "kh", "গ": "g",
+    "ঘ": "gh", "ঙ": "ng", "চ": "ch", "ছ": "chh", "জ": "j", "ঝ": "jh",
+    "ঞ": "n", "ট": "t", "ঠ": "th", "ড": "d", "ঢ": "dh", "ণ": "n", "ত": "t",
+    "থ": "th", "দ": "d", "ধ": "dh", "ন": "n", "প": "p", "ফ": "ph", "ব": "b",
+    "ভ": "bh", "ম": "m", "য": "j", "র": "r", "ল": "l", "শ": "sh", "ষ": "sh",
+    "স": "s", "হ": "h", "ড়": "r", "ঢ়": "rh", "য়": "y", "ৎ": "t",
+    "া": "a", "ি": "i", "ী": "i", "ু": "u", "ূ": "u", "ৃ": "ri", "ে": "e",
+    "ৈ": "oi", "ো": "o", "ৌ": "ou", "্": "", "ঁ": "", "ং": "ng", "ঃ": "",
+    "়": "", "০": "0", "১": "1", "২": "2", "৩": "3", "৪": "4", "৫": "5",
+    "৬": "6", "৭": "7", "৮": "8", "৯": "9",
+}
+
+
+def bn_to_roman(text: str) -> str:
+    """Simple Bengali → Roman transliteration so Bengali queries can fuzzy-match
+    Banglish samples in the dataset."""
+    if not any("\u0980" <= c <= "\u09ff" for c in text):
+        return text
+    out = []
+    for ch in text:
+        if ch in _BN_TO_ROMAN_MAP:
+            out.append(_BN_TO_ROMAN_MAP[ch])
+        elif "\u0980" <= ch <= "\u09ff":
+            continue
+        else:
+            out.append(ch)
+    return re.sub(r"\s+", " ", "".join(out)).strip()
+
+
+# Canned "failure" replies baked into some training rows (e.g. "ইন্টারনেট
+# কানেকশন পাচ্ছি না").  At runtime these are ALWAYS wrong — the requested
+# action may actually succeed — and they made Star claim the internet was
+# down while doing nothing.  Such rows are excluded from matching entirely.
+_FAILURE_REPLY_PATTERN = re.compile(
+    r"(?:ইন্টারনেট[^।]*?(?:পাচ্ছি|পাচ্ছে|নেই|কানেক্ট)|"
+    r"কানেকশন[^।]*?(?:নেই|পাচ্ছি|সমস্যা)|"
+    r"নেট[^।]*?(?:নেই|চলছে না)|"
+    r"internet[^.]*?(?:not available|can't|cannot|no connection|down)|"
+    r"no\s+internet|offline\s+mode)",
+    re.IGNORECASE,
+)
+
 
 def stem_bengali_suffix(word: str) -> str:
     """Stem common Bengali definitive articles and case suffixes."""
@@ -978,6 +1024,12 @@ class CompanionKnowledgeEngine:
                             if not (u and a):
                                 continue
 
+                            # Skip rows whose canned reply is a baked-in failure
+                            # ("internet connection পাচ্ছি না") — at runtime these
+                            # lie about the actual system state.
+                            if _FAILURE_REPLY_PATTERN.search(a):
+                                continue
+
                             norm_u = normalize_dialogue(u)
                             if not norm_u or norm_u in seen_norms:
                                 continue
@@ -1108,7 +1160,7 @@ class CompanionKnowledgeEngine:
         # Pass 1: Exact match
         for sample in self.samples:
             if norm_q == sample.norm_user:
-                return self._build_result(sample, 1.0, "exact_match")
+                return self._build_result(sample, 1.0, "exact_match", query=query)
 
         # Pass 2: Intent-filtered hybrid search
         candidate_indices = set(self.intent_index.get(q_intent, []))
@@ -1160,14 +1212,27 @@ class CompanionKnowledgeEngine:
                     best_sample = sample
 
         if best_sample and best_score >= min_confidence:
-            return self._build_result(best_sample, best_score, "hybrid_search")
+            return self._build_result(best_sample, best_score, "hybrid_search", query=query)
 
         return None
 
     def _build_result(self, sample: DialogueSample, confidence: float,
-                      source: str) -> MatchResult:
-        """Build a MatchResult with action detection and variation."""
-        actions = self._detect_and_run_actions(sample.norm_user)
+                      source: str, query: str = "",
+                      execute_actions: bool = False) -> MatchResult:
+        """Build a MatchResult with action detection and variation.
+
+        FIX (was the biggest 'ulto palto kaj' bug): actions are now detected
+        from the USER'S actual query, never from the matched training sample.
+        A fuzzy-matched sample like "volume komao" must not make Star turn the
+        volume down when the user asked something completely different.  Side
+        effects only run when ``execute_actions`` is explicitly requested.
+        """
+        actions: List[Dict[str, Any]] = []
+        if execute_actions and query:
+            try:
+                actions = self._detect_and_run_actions(normalize_dialogue(query))
+            except Exception:
+                actions = []
 
         response = sample.assistant_reply
         if response in self._response_history:
@@ -1371,10 +1436,15 @@ class CompanionKnowledgeEngine:
     # ─── Public Query Interface ──────────────────────────────────────────────
 
     def find_match(self, query: str,
-                   min_confidence: float = 0.65) -> Optional[Dict[str, Any]]:
+                   min_confidence: float = 0.65,
+                   allow_actions: bool = False) -> Optional[Dict[str, Any]]:
         """
         Find high-confidence matching response using multi-stage pipeline
         with transliteration fallback and conversation memory update.
+
+        ``allow_actions`` defaults to False: dataset matches are treated as
+        CHAT ONLY.  Command side effects belong to the deterministic command
+        router, not to fuzzy-matched training samples.
         """
         if not self.samples or not query:
             return None
@@ -1385,17 +1455,14 @@ class CompanionKnowledgeEngine:
         # Transliteration fallback (Bengali → Roman)
         if not match and any('\u0980' <= c <= '\u09ff' for c in query):
             try:
-                from star.brain.translit import bn_to_roman
                 roman_q = bn_to_roman(query)
                 if roman_q and roman_q != query:
                     match = self._search_pipeline(roman_q, min_confidence)
-            except ImportError:
-                pass
             except Exception:
                 pass
 
         # If no dataset match, but an action was detected and successfully executed
-        if not match:
+        if not match and allow_actions:
             norm_q = normalize_dialogue(query)
             if norm_q:
                 actions = self._detect_and_run_actions(norm_q)

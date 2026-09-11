@@ -63,11 +63,20 @@ class AgentBridge:
 
     async def _init_agent(self) -> ComputerControlAgent:
         gov_cfg = GovernorConfig.for_level(self.safety_level)
+        # Wire the real LLM planner (Gemini / Ollama) into the ReAct agent so
+        # multi-step goals are actually planned intelligently.  The planner
+        # itself falls back to the deterministic StubPlanner when offline.
+        try:
+            from .llm.agent_planner import AgentLLMPlanner
+            planner_factory = AgentLLMPlanner
+        except Exception:
+            planner_factory = None
         return ComputerControlAgent(
             governor_config=gov_cfg,
             dry_run=self.dry_run,
             memory_path=self.memory_path,
             owner=self.owner,
+            planner_factory=planner_factory,
         )
 
     def add_log_listener(self, listener: Callable[[str, str], None]) -> None:
@@ -188,8 +197,12 @@ class AgentBridge:
 
     # ── Autonomous Planning Layer ─────────────────────────────────────────────
 
-    def run(self, goal: str, timeout: float = 60.0) -> Dict[str, Any]:
-        """Run an autonomous multi-step goal using ReAct planner."""
+    def run(self, goal: str, timeout: float = 120.0) -> Dict[str, Any]:
+        """Run an autonomous multi-step goal using ReAct planner.
+
+        Default timeout raised 60s → 120s: LLM-planned multi-step episodes
+        (perceive → plan → act → verify per step) legitimately take longer.
+        """
         self._emit_log(f"[Agent Task] গোল শুরু: '{goal}'", "gold")
         try:
             coro = self._agent.run(goal)

@@ -109,6 +109,21 @@ class MemoryStore:
             existing = self.latest_by_key(key)
             if existing is not None and existing.value == value and existing.text == cleaned:
                 return existing
+        else:
+            # FIX: keyless facts ("amar pochondo coffee") used to be stored
+            # again on EVERY mention — duplicates then flooded recall's top_k
+            # and pushed newer facts out of the results entirely.
+            with self._lock:
+                row = self._conn.execute(
+                    """
+                    SELECT id, text, kind, key, value, timestamp, embedding, source_episode
+                    FROM memories WHERE text = ? AND kind = ?
+                    ORDER BY timestamp DESC LIMIT 1
+                    """,
+                    (cleaned, kind.value),
+                ).fetchone()
+            if row is not None:
+                return self._row(row)
         embedding = self.embedder.encode(cleaned)
         ts = self.clock.now()
         with self._lock:
@@ -175,8 +190,18 @@ class MemoryStore:
             boost = 0.2 * sum(1.0 for tok in tokens if tok in hay)
             scored.append(record.model_copy(update={"score": min(1.0, score + boost)}))
         scored.sort(key=lambda rec: rec.score or 0.0, reverse=True)
+        # FIX: collapse duplicate texts (legacy rows may repeat) so a single
+        # fact cannot occupy multiple top_k slots.
+        seen_texts: set[str] = set()
+        deduped: list[MemoryRecord] = []
+        for rec in scored:
+            sig = rec.text.strip().lower()
+            if sig in seen_texts:
+                continue
+            seen_texts.add(sig)
+            deduped.append(rec)
         METRICS.observe("memory.recall", float(len(rows)))
-        return scored[:top_k]
+        return deduped[:top_k]
 
     def latest_by_key(self, key: str) -> MemoryRecord | None:
         with self._lock:

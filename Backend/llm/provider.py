@@ -16,7 +16,70 @@ from ..config import (
     GEMINI_API_KEY, GEMINI_MODEL, USE_GEMINI
 )
 from ..tools.registry import execute_tool, get_tool_schemas
+from ..nlu.command_router import route_command
 from .knowledge import get_companion_engine
+
+
+def _conversation_pipeline(user_text: str, memory_context: str = "",
+                           llm_callable=None) -> Dict[str, Any]:
+    """Single deterministic routing pipeline shared by every provider.
+
+    Order (each stage only runs if the previous found nothing):
+      1. Command router   — strict imperative patterns, executes REAL actions
+                            with real values (never hijacked by chat).
+      2. Dataset exact    — identity chat replies from the training data.
+      3. Dataset fuzzy    — CHAT-ONLY (side effects disabled; this was the
+                            source of 'ulto palto kaj' before).
+      4. Legacy intents   — extra offline keyword net.
+      5. LLM (if online)  — Ollama / Gemini with function-calling tools.
+      6. Friendly fallback — never a random memory dump again.
+    """
+    companion = get_companion_engine()
+
+    # 1. Deterministic command router
+    routed = route_command(user_text)
+    if routed:
+        return {
+            "response": routed.get("response", ""),
+            "actions": routed.get("actions", []),
+            "source": routed.get("source", "command_router"),
+        }
+
+    # 2. Exact dataset match (pure chat)
+    exact = companion.find_match(user_text, min_confidence=0.995)
+    if exact:
+        return exact
+
+    # 3. High-confidence fuzzy dataset match (chat only — no side effects)
+    fuzzy = companion.find_match(user_text, min_confidence=0.84)
+    if fuzzy:
+        return fuzzy
+
+    # 4. Legacy offline intent patterns
+    try:
+        intent_match = OfflineIntentEngine().match_intent(user_text)
+    except Exception:
+        intent_match = None
+    if intent_match:
+        return intent_match
+
+    # 5. LLM (online providers)
+    if llm_callable is not None:
+        try:
+            llm_result = llm_callable(user_text, memory_context)
+        except Exception:
+            llm_result = None
+        if llm_result:
+            return llm_result
+
+    # 6. Friendly fallback
+    return {
+        "response": ("দুঃখিত বন্ধু, কথাটা আমি ঠিকমতো বুঝতে পারিনি। একটু সহজ করে "
+                     "আবার বলবে? ভলিউম, ব্রাইটনেস, অ্যাপ খোলা, গান চালানো বা "
+                     "স্ক্রিনশটের মতো কাজ বললে আমি সাথে সাথেই করে দেবো!"),
+        "actions": [],
+        "source": "fallback",
+    }
 
 
 class BaseLLMProvider:
@@ -60,33 +123,12 @@ class LocalOllamaProvider(BaseLLMProvider):
             return False
 
     def process_query(self, user_text: str, memory_context: str = "") -> Dict[str, Any]:
-        companion = get_companion_engine()
+        llm_callable = self._llm_answer if self.is_available() else None
+        return _conversation_pipeline(user_text, memory_context, llm_callable=llm_callable)
 
-        # 1. Check high-confidence instant match in dataset (<1ms latency)
-        dataset_match = companion.find_match(user_text, min_confidence=0.80)
-        if dataset_match:
-            ans = dataset_match["response"]
-            self.history.append({"role": "user", "content": user_text})
-            self.history.append({"role": "assistant", "content": ans})
-            if len(self.history) > 10:
-                self.history = self.history[-10:]
-            return dataset_match
-
-        # 2. Check direct semantic intent (volume, brightness, launch app, greetings, status, conversational triggers)
-        intent_match = self.offline_engine.match_intent(user_text)
-        if intent_match:
-            ans = intent_match["response"]
-            self.history.append({"role": "user", "content": user_text})
-            self.history.append({"role": "assistant", "content": ans})
-            if len(self.history) > 10:
-                self.history = self.history[-10:]
-            return intent_match
-
-        # Fast-fail to offline engine if Ollama is not running (prevents 15-second freeze)
-        if not self.is_available():
-            return self.offline_engine.process_query(user_text, memory_context=memory_context)
-
-        # 3. Clean Ollama query: system persona + memory context + genuine recent turns + user prompt
+    def _llm_answer(self, user_text: str, memory_context: str = "") -> Optional[Dict[str, Any]]:
+        """Ollama/LM Studio turn with function-calling tools. Returns None on failure."""
+        # Build prompt: system persona + memory + genuine recent turns + user prompt
         sys_prompt = SYSTEM_PERSONA_PROMPT
         if memory_context:
             sys_prompt += f"\n\n[USER MEMORY CONTEXT]\n{memory_context}"
@@ -95,15 +137,23 @@ class LocalOllamaProvider(BaseLLMProvider):
             messages.append(h)
         messages.append({"role": "user", "content": user_text})
 
-        # Only pass tools if query implies an explicit PC action
-        is_action = any(w in user_text.lower() for w in ["open", "launch", "kholo", "chalu", "volume", "sound", "awaj", "brightness", "alo", "battery", "status", "charge", "search", "সার্চ"])
+        # Pass tools whenever the query could plausibly be an action (broad net —
+        # the LLM decides; the old tiny keyword gate missed many commands).
+        is_action = any(w in user_text.lower() for w in [
+            "open", "launch", "close", "kill", "kholo", "khulo", "bondho", "chalu",
+            "volume", "sound", "awaj", "mute", "unmute", "brightness", "alo", "light",
+            "battery", "status", "charge", "search", "play", "gaan", "gan", "song",
+            "music", "screenshot", "lock", "youtube", "google", "folder", "time",
+            "সার্চ", "খোলো", "খুলো", "বন্ধ", "ভলিউম", "আওয়াজ", "ব্রাইটনেস", "আলো",
+            "গান", "স্ক্রিনশট", "চালাও", "বাজাও", "সময়", "চার্জ",
+        ])
         tools = get_tool_schemas() if is_action else None
 
         payload = {
             "model": self.model,
             "messages": messages,
             "temperature": 0.35,
-            "max_tokens": 120  # Adequate token budget so Bengali words/sentences are never truncated mid-word
+            "max_tokens": 320,  # generous budget so Bengali sentences are never cut mid-word
         }
         if tools:
             payload["tools"] = tools
@@ -117,11 +167,10 @@ class LocalOllamaProvider(BaseLLMProvider):
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=20) as resp:
                 res_json = json.loads(resp.read().decode("utf-8"))
                 choice = res_json.get("choices", [{}])[0].get("message", {})
 
-                # Check if model requested tool execution
                 tool_calls = choice.get("tool_calls", [])
                 executed_actions = []
 
@@ -137,7 +186,7 @@ class LocalOllamaProvider(BaseLLMProvider):
                         tool_res = execute_tool(fn_name, **fn_args)
                         executed_actions.append({"tool": fn_name, "args": fn_args, "result": tool_res})
 
-                    # Second turn for friendly verbal summary of actions
+                    # Second turn for a friendly verbal summary of the actions
                     followup_payload = {
                         "model": self.model,
                         "messages": [
@@ -149,7 +198,9 @@ class LocalOllamaProvider(BaseLLMProvider):
                                 "name": executed_actions[0]["tool"],
                                 "content": json.dumps(executed_actions[0]["result"])
                             }
-                        ]
+                        ],
+                        "temperature": 0.35,
+                        "max_tokens": 320,
                     }
                     data_follow = json.dumps(followup_payload).encode("utf-8")
                     req_follow = urllib.request.Request(
@@ -158,10 +209,12 @@ class LocalOllamaProvider(BaseLLMProvider):
                         headers={"Content-Type": "application/json"},
                         method="POST"
                     )
-                    with urllib.request.urlopen(req_follow, timeout=15) as resp2:
+                    with urllib.request.urlopen(req_follow, timeout=20) as resp2:
                         res2 = json.loads(resp2.read().decode("utf-8"))
                         raw_final = res2.get("choices", [{}])[0].get("message", {}).get("content", "")
                         final_text = clean_llm_response(raw_final)
+                        if not final_text:
+                            return None
                         self.history.append({"role": "user", "content": user_text})
                         self.history.append({"role": "assistant", "content": final_text})
                         if len(self.history) > 20:
@@ -174,6 +227,8 @@ class LocalOllamaProvider(BaseLLMProvider):
 
                 raw_content = choice.get("content", "")
                 content = clean_llm_response(raw_content)
+                if not content:
+                    return None
                 self.history.append({"role": "user", "content": user_text})
                 self.history.append({"role": "assistant", "content": content})
                 if len(self.history) > 20:
@@ -184,10 +239,8 @@ class LocalOllamaProvider(BaseLLMProvider):
                     "source": f"local_llm ({self.model})"
                 }
 
-        except Exception as e:
-            # Fall back automatically to offline engine if server is unreachable
-            return OfflineIntentEngine().process_query(user_text)
-
+        except Exception:
+            return None
 
 class GoogleGeminiProvider(BaseLLMProvider):
     """Official Google Gemini Cloud Intelligence Provider (Ultra-fast, Free Tier, Bengali Native)."""
@@ -203,25 +256,11 @@ class GoogleGeminiProvider(BaseLLMProvider):
         return bool(self.api_key)
 
     def process_query(self, user_text: str, memory_context: str = "") -> Dict[str, Any]:
-        companion = get_companion_engine()
+        llm_callable = self._gemini_answer if self.is_available() else None
+        return _conversation_pipeline(user_text, memory_context, llm_callable=llm_callable)
 
-        # 1. Instant match in companion dataset (<1ms)
-        dataset_match = companion.find_match(user_text, min_confidence=0.82)
-        if dataset_match:
-            ans = dataset_match["response"]
-            self.history.append({"role": "user", "content": user_text})
-            self.history.append({"role": "model", "content": ans})
-            return dataset_match
-
-        # 2. Instant match in PC intent rules (volume, brightness, youtube, apps, screen vision, etc.)
-        intent_match = self.offline_engine.match_intent(user_text)
-        if intent_match:
-            ans = intent_match["response"]
-            self.history.append({"role": "user", "content": user_text})
-            self.history.append({"role": "model", "content": ans})
-            return intent_match
-
-        # 3. Query Google Gemini Cloud API
+    def _gemini_answer(self, user_text: str, memory_context: str = "") -> Optional[Dict[str, Any]]:
+        """Google Gemini cloud turn. Returns None on any failure (pipeline falls back)."""
         try:
             contents = []
             for h in self.history[-6:]:
@@ -240,7 +279,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 },
                 "generationConfig": {
                     "temperature": 0.45,
-                    "maxOutputTokens": 200
+                    "maxOutputTokens": 320  # was 200 — truncated replies mid-sentence
                 }
             }
             data = json.dumps(payload).encode("utf-8")
@@ -250,7 +289,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 headers={"Content-Type": "application/json"},
                 method="POST"
             )
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=12) as resp:
                 res = json.loads(resp.read().decode("utf-8"))
                 candidates = res.get("candidates", [])
                 if candidates:
@@ -258,6 +297,8 @@ class GoogleGeminiProvider(BaseLLMProvider):
                     if parts:
                         raw_text = parts[0].get("text", "")
                         final_text = clean_llm_response(raw_text)
+                        if not final_text:
+                            return None
                         self.history.append({"role": "user", "content": user_text})
                         self.history.append({"role": "model", "content": final_text})
                         if len(self.history) > 16:
@@ -269,10 +310,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         }
         except Exception as e:
             print(f"[GeminiProvider Error]: {e}")
-
-        # Fallback to offline engine
-        return self.offline_engine.process_query(user_text, memory_context=memory_context)
-
+        return None
 
 class OfflineIntentEngine(BaseLLMProvider):
     """100% offline, lightning-fast semantic rule and intent extractor for Bengali, Banglish & English."""
@@ -341,7 +379,9 @@ class OfflineIntentEngine(BaseLLMProvider):
                 }
 
         # 0.4 Autonomous Computer Control Agent Triggers
-        if any(w in text for w in ["autonomous", "computer agent", "desktop agent", "অটোনোমাস", "কম্পিউটার এজেন্ট", "নিজে নিজে করো", "এজেন্ট"]):
+        # FIX: bare "agent"/"এজেন্ট" removed — sentences like "ami agent banate chai"
+        # used to launch a nonsense autonomous goal.
+        if any(w in text for w in ["autonomous", "computer agent", "desktop agent", "অটোনোমাস", "কম্পিউটার এজেন্ট", "নিজে নিজে করো", "নিজে নিজে"]):
             goal = re.sub(r"^(?:autonomous|computer agent|desktop agent|অটোনোমাস|কম্পিউটার এজেন্ট|এজেন্ট|agent)\s*", "", text).strip()
             if not goal:
                 goal = "Take a screenshot"
@@ -426,7 +466,9 @@ class OfflineIntentEngine(BaseLLMProvider):
                 }
 
         # 2. Brightness Control
-        if any(w in text for w in ["brightness", "alo", "light", "display", "screen", "ব্রাইটনেস", "আলো", "স্ক্রিন"]):
+        # FIX: bare "screen" removed from triggers — it substring-matched
+        # "screenshot" and hijacked screenshot requests.
+        if any(w in text for w in ["brightness", "alo", "light", "display", "ব্রাইটনেস", "আলো"]):
             num_match = re.search(r"(\d+)\s*%", text) or re.search(r"(\d+)", text)
             number = int(num_match.group(1)) if num_match else None
 
@@ -706,7 +748,11 @@ class OfflineIntentEngine(BaseLLMProvider):
                 "source": "offline_intent"
             }
 
-        introductions = ["tumi ke", "who are you", "tomar naam", "তোমার নাম", "তুমি কে"]
+        introductions = ["tumi ke", "who are you", "tomar naam", "তোমার নাম", "তুমি কে",
+                         "what is your name", "whats your name", "what's your name",
+                         "your name", "tomar name", "tomar nam", "nam ki tomar",
+                         "who made you", "who created you", "tumi k ke",
+                         "tumi kotha theke elo", "তুমি কে বানিয়েছে"]
         if any(i in text for i in introductions):
             return {
                 "response": "আমি তোমার পার্সোনাল AI অ্যাসিস্ট্যান্ট 'Star'—নীলাঞ্জনের সার্বক্ষণিক ডিজিটাল বন্ধু ও সহকারী!",
@@ -766,30 +812,13 @@ class OfflineIntentEngine(BaseLLMProvider):
         return None
 
     def process_query(self, user_text: str, memory_context: str = "") -> Dict[str, Any]:
-        """Process query by checking dataset, then direct intent, and finally default fallback."""
-        companion = get_companion_engine()
-        dataset_match = companion.find_match(user_text, min_confidence=0.80)
-        if dataset_match:
-            return dataset_match
+        """Fully offline pipeline: router → dataset → intents → friendly fallback.
 
-        intent_match = self.match_intent(user_text)
-        if intent_match:
-            return intent_match
-
-        if memory_context:
-            facts = "\n".join([l.strip("- ") for l in memory_context.splitlines() if l.strip().startswith("-")])
-            return {
-                "response": f"আমি তোমার কথাটি বুঝতে পেরেছি বন্ধু! তোমার পছন্দ অনুযায়ী যা মনে রেখেছি:\n{facts}",
-                "actions": [],
-                "source": "offline_memory"
-            }
-
-        # Default fallback conversational response
-        return {
-            "response": "আমি তোমার কথাটি শুনতে পেয়েছি বন্ধু। সিস্টেম কন্ট্রোল বা যেকোনো বিষয়ে আমাকে নির্দ্বিধায় বলো, আমি সাথে সাথে করে দেবো!",
-            "actions": [],
-            "source": "offline_intent"
-        }
+        FIX: the old fallback dumped stored memory facts for ANY unmatched query,
+        which produced completely unrelated answers ("ulto palto kotha").
+        Now unmatched queries get an honest, friendly clarification instead.
+        """
+        return _conversation_pipeline(user_text, memory_context, llm_callable=None)
 
 
 def get_llm_provider() -> BaseLLMProvider:
