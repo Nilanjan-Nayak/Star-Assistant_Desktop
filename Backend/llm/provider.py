@@ -508,10 +508,12 @@ class OfflineIntentEngine(BaseLLMProvider):
                            re.search(r"(.+?)\s+(?:search|chalao|bajao|চালাও|বাজাও)\s+(?:on|in)?\s*(?:youtube|ইউটিউব)", text)
             if search_match:
                 q = search_match.group(1).strip()
-                res = execute_tool("search_web", query=q, target="youtube")
+                is_play = any(w in text for w in ["chalao", "bajao", "play", "চালাও", "বাজাও"])
+                res = execute_tool("search_web", query=q, target="youtube", play=is_play)
                 executed_actions.append({"tool": "search_web", "args": {"query": q, "target": "youtube"}, "result": res})
+                verb = "চালিয়ে" if is_play else "খুঁজে"
                 return {
-                    "response": f"ইউটিউবে তোমার জন্য '{q}' চালিয়ে দিয়েছি বন্ধু! উপভোগ করো।",
+                    "response": f"ইউটিউবে তোমার জন্য '{q}' {verb} দিয়েছি বন্ধু! উপভোগ করো।",
                     "actions": executed_actions,
                     "source": "offline_intent"
                 }
@@ -524,12 +526,12 @@ class OfflineIntentEngine(BaseLLMProvider):
             }
 
         # Music / Song Playback
-        if any(w in text for w in ["gan", "gaan", "song", "music", "গান", "গান চালাও", "গান বাজাও"]):
+        if any(w in text for w in ["gan", "gaan", "song", "music", "গান", "গান চালাও", "গান বাজাও"]) or re.match(r"^play\s+", text, flags=re.IGNORECASE):
             cleaned_q = re.sub(r"^(?:play|chalao|bajao|shonao|গান|গান চালাও|গান বাজাও|একটা গান চালাও|চালাও|বাজাও|শোনাও|please play)\s*", "", text, flags=re.IGNORECASE).strip()
             cleaned_q = re.sub(r"\s*(?:chalao|bajao|shonao|গান|চালাও|বাজাও|শোনাও|on youtube|in youtube|ইউটিউবে)$", "", cleaned_q, flags=re.IGNORECASE).strip()
             cleaned_q = re.sub(r"\s*(?:er gan|er gaan|এর গান)\s*$", "", cleaned_q, flags=re.IGNORECASE).strip()
             song_query = cleaned_q if (cleaned_q and len(cleaned_q) > 1) else "bangla top hit songs"
-            res = execute_tool("search_web", query=song_query, target="youtube")
+            res = execute_tool("search_web", query=song_query, target="youtube", play=True)
             executed_actions.append({"tool": "search_web", "args": {"query": song_query, "target": "youtube"}, "result": res})
             return {
                 "response": f"ইউটিউবে তোমার জন্য '{song_query}' গানটি চালিয়ে দিয়েছি বন্ধু!",
@@ -539,14 +541,25 @@ class OfflineIntentEngine(BaseLLMProvider):
 
         # Google Search
         if any(w in text for w in ["google", "গুগল", "search", "সার্চ"]):
-            cleaned_q = re.sub(r"^(?:google(?:[ -]e)?|গুগলে?)\s*(?:search|khujo|খোঁজো|খুঁজে দাও|সার্চ করো|সার্চ)?\s*(?:kor|koro|করো)?\s*", "", text, flags=re.IGNORECASE).strip()
-            cleaned_q = re.sub(r"^(?:search|সার্চ করো|সার্চ)\s*", "", cleaned_q, flags=re.IGNORECASE).strip()
-            cleaned_q = re.sub(r"\s*(?:search kor|search koro|সার্চ করো|সার্চ|khujo|খুঁজে দাও)$", "", cleaned_q, flags=re.IGNORECASE).strip()
+            try:
+                from ..tools.web.search import extract_clean_search_query
+                cleaned_q, engine = extract_clean_search_query(text)
+            except Exception:
+                cleaned_q = re.sub(r"^(?:google(?:[ -]e)?|গুগলে?)\s*(?:search|khujo|খোঁজো|খুঁজে দাও|সার্চ করো|সার্চ)?\s*(?:kor|koro|করো)?\s*", "", text, flags=re.IGNORECASE).strip()
+                cleaned_q = re.sub(r"^(?:search|সার্চ করো|সার্চ)\s*", "", cleaned_q, flags=re.IGNORECASE).strip()
+                cleaned_q = re.sub(r"\s*(?:search kor|search koro|সার্চ করো|সার্চ|khujo|খুঁজে দাও)$", "", cleaned_q, flags=re.IGNORECASE).strip()
+                engine = "google"
             if cleaned_q and len(cleaned_q) > 1:
-                res = execute_tool("search_web", query=cleaned_q, target="google")
-                executed_actions.append({"tool": "search_web", "args": {"query": cleaned_q, "target": "google"}, "result": res})
+                ans_res = execute_tool("web_quick_answer", query=cleaned_q)
+                quick_ans = ans_res.get("answer", "") if (ans_res.get("success") and ans_res.get("answer")) else ""
+                res = execute_tool("web_search", query=cleaned_q, engine=engine)
+                executed_actions.append({"tool": "web_search", "args": {"query": cleaned_q, "engine": engine}, "result": res})
+                if quick_ans:
+                    reply = f"{quick_ans}। তোমার সুবিধার্থে ব্রাউজারে পেজটি খুলে দিয়েছি বন্ধু, তুমি পরে আরও দেখে নিতে পারো!"
+                else:
+                    reply = f"{engine.capitalize()}-এ '{cleaned_q}' লিখে সার্চ করেছি বন্ধু, ব্রাউজারে দেখে নাও!"
                 return {
-                    "response": f"গুগলে '{cleaned_q}' লিখে সার্চ করেছি বন্ধু, ব্রাউজারে দেখে নাও!",
+                    "response": reply,
                     "actions": executed_actions,
                     "source": "offline_intent"
                 }

@@ -13,7 +13,7 @@ from .agent_bridge import get_agent_bridge
 class AssistantBrain:
     """Orchestrates query processing, tool execution, memory, and voice output."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.provider = get_llm_provider()
         self.agent = get_agent_bridge()
 

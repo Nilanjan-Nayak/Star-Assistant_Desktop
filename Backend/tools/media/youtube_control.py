@@ -1,0 +1,20 @@
+"""Forwarding shim to Backend/tools/youtube/control.py"""
+from ..youtube.control import (
+    youtube_play_pause,
+    youtube_next,
+    youtube_previous,
+    youtube_set_speed,
+    youtube_set_quality,
+    youtube_fullscreen,
+    youtube_mute_video,
+    youtube_seek_forward,
+    youtube_seek_rewind,
+    youtube_toggle_captions,
+    youtube_close_tab,
+    youtube_restart,
+    youtube_theater_mode,
+    youtube_miniplayer,
+    youtube_seek_by_time,
+    youtube_seek_to_position,
+    youtube_adjust_player_volume,
+)

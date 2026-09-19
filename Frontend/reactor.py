@@ -1,14 +1,17 @@
 """
-The Reactor — Star's Mascot & Central Power Core. (v3.0 — Cinematic Arc Reactor)
+The Reactor — Star's Mascot & Central Power Core. (v4.0 — JARVIS Cinematic Arc Reactor)
 
 A high-tech, multi-layered, ultra-smooth holographic fusion reactor:
 - 10/12 electromagnetic power inductor coils arranged radially with sequential energy propagation
 - Dual counter-rotating quantum gyroscopic rings with micro-dashed tracks and orbital nodes
 - Segmented outer stator arcs with energy heads and tapering glow trails
 - 360° precision calibration reticle with cardinal chevrons and corner brackets
-- Floating quantum plasma motes (living animated energy particles)
+- 30 floating quantum plasma motes with firefly fade-trails (was 20)
 - Multi-pass volumetric bloom singularity with an anamorphic starburst cross-glint
 - Interactive shockwave ripple feedback on hover and click
+- Bezier-interpolated organic breathing curve (replaces dual-sine)
+- Ambient halo ring visible in CENTER/RAIL mode
+- Core shimmer: rapid micro-flicker over the plasma seed
 - 60 FPS delta-time physics with smooth velocity lerping and harmonic breathing
 
 States:
@@ -36,7 +39,8 @@ from PySide6.QtWidgets import QWidget
 
 from tokens import (
     NAVY, CYAN, CYAN_GLOW, CYAN_DIM, CYAN_CORE, CYAN_HOT, COIL_BASE, COIL_ACTIVE, COIL_GOLD,
-    GOLD, GOLD_GLOW, ALERT, OK, MOTION, DEEP_NAVY, CORE_BRIGHT, RING_OUTER, RING_MID
+    GOLD, GOLD_GLOW, ALERT, OK, MOTION, DEEP_NAVY, CORE_BRIGHT, RING_OUTER, RING_MID,
+    ARC_GLOW,
 )
 
 STATE_IDLE = "idle"
@@ -49,7 +53,7 @@ STATE_STOP = "stop"
 
 _WAVE_BARS = 28
 _NUM_COILS = 10
-_NUM_MOTES = 20
+_NUM_MOTES = 30           # v4.0: 20→30 motes for denser JARVIS energy field
 
 
 class Reactor(QWidget):
@@ -74,6 +78,7 @@ class Reactor(QWidget):
         self._hover = 0.0           # 0..1 hover intensity
         self._speed_mult = 1.0      # rotational speed multiplier
         self._act_pulse = 0.0       # 0..1 gold act pulse
+        self._shimmer_phase = 0.0   # v4.0: core micro-shimmer
 
         # Continuous rotations (degrees)
         self._spin_outer = 0.0      # slow clockwise stator
@@ -92,17 +97,19 @@ class Reactor(QWidget):
         # Interactive shockwave ripples: each is [current_r_norm, max_r_norm, alpha, speed, QColor]
         self._ripples: List[List[Any]] = []
 
-        # Floating quantum plasma motes
+        # v4.0: Floating quantum plasma motes with firefly trails
         self._motes: List[Dict[str, float]] = []
         for _ in range(_NUM_MOTES):
             self._motes.append({
                 "angle": random.uniform(0, 360),
-                "r_ratio": random.uniform(0.24, 0.78),
+                "r_ratio": random.uniform(0.18, 0.62),   # v4.1: tighter — stay inside reactor body
                 "speed": random.uniform(18.0, 55.0) * random.choice([-1, 1]),
-                "size": random.uniform(1.2, 2.6),
-                "alpha": random.uniform(0.35, 0.95),
-                "radial_drift": random.uniform(0.04, 0.12),
+                "size": random.uniform(1.0, 2.2),
+                "alpha": random.uniform(0.30, 0.85),
+                "radial_drift": random.uniform(0.03, 0.08),  # v4.1: less drift outside
                 "drift_phase": random.uniform(0, math.pi * 2),
+                # Firefly trail: store previous 2 positions as (px, py) pairs
+                "trail": [],
             })
 
         # Delta-time tracking
@@ -166,6 +173,32 @@ class Reactor(QWidget):
         c = color if color is not None else (ALERT if self._state == STATE_STOP else CYAN_CORE)
         self._ripples.append([0.15, 1.25, 1.0, speed, c])
 
+    # -- v4.0: Bezier-interpolated organic breathing curve ----------------
+    @staticmethod
+    def _bezier_breath(t: float) -> float:
+        """Attempt a smooth organic breathing curve using cubic bezier-like
+        interpolation rather than sharp sine waves.  Produces a softer
+        inhale/exhale rhythm similar to real respiration."""
+        # Normalize t to [0, 1] within a breath cycle
+        cycle = t % 1.0
+        # Inhale: fast ramp up (0..0.4)
+        if cycle < 0.4:
+            p = cycle / 0.4
+            # Cubic ease-out for gentle arrival at peak
+            val = 1.0 - (1.0 - p) ** 3
+        # Hold at peak briefly (0.4..0.5)
+        elif cycle < 0.5:
+            val = 1.0
+        # Exhale: slow relaxed falloff (0.5..0.95)
+        elif cycle < 0.95:
+            p = (cycle - 0.5) / 0.45
+            # Cubic ease-in for gradual release
+            val = 1.0 - p ** 2.5
+        # Rest at bottom (0.95..1.0)
+        else:
+            val = 0.0
+        return 0.35 + 0.65 * val  # remap to 0.35..1.0 range
+
     # -- Unified Physics & Render Tick ------------------------------------
     def _render_tick(self):
         now = time.perf_counter()
@@ -178,14 +211,15 @@ class Reactor(QWidget):
         target_speed = 1.0 + self._hover * 1.2 + (0.8 if self._state == STATE_THINK else 0.0)
         self._speed_mult += (target_speed - self._speed_mult) * min(1.0, dt * 6.0)
 
-        # Continuous organic breathing (dual-frequency harmonic)
-        breath_speed = 2.0 * math.pi / (MOTION["hex.breathe"] / 1000.0)
+        # v4.0: Bezier-interpolated organic breathing (replaces dual-sine)
+        breath_speed = 1.0 / (MOTION["hex.breathe"] / 1000.0)
         if self._state in (STATE_WAKE, STATE_HEAR):
             breath_speed *= 2.0
-        self._breath_phase = (self._breath_phase + dt * breath_speed) % (math.pi * 2)
-        # Combined wave with harmonic richness
-        raw_b = 0.5 + 0.38 * math.sin(self._breath_phase) + 0.12 * math.sin(self._breath_phase * 2.1)
-        self._breath = max(0.0, min(1.0, raw_b))
+        self._breath_phase = (self._breath_phase + dt * breath_speed) % 1.0
+        self._breath = self._bezier_breath(self._breath_phase)
+
+        # v4.0: Core shimmer — rapid micro-flicker
+        self._shimmer_phase = (self._shimmer_phase + dt * 25.0) % (math.pi * 2)
 
         # Dynamic continuous rotations
         self._spin_outer = (self._spin_outer + dt * 14.0 * self._speed_mult) % 360.0
@@ -193,10 +227,20 @@ class Reactor(QWidget):
         self._spin_iris = (self._spin_iris + dt * 18.0 * self._speed_mult) % 360.0
         self._spin_glint = (self._spin_glint + dt * 9.0) % 360.0
 
-        # Quantum plasma motes physics
+        # Quantum plasma motes physics + firefly trail capture
+        cx_norm = 0.5
+        cy_norm = 0.5
         for m in self._motes:
             m["angle"] = (m["angle"] + dt * m["speed"] * self._speed_mult) % 360.0
             m["drift_phase"] = (m["drift_phase"] + dt * 1.5) % (math.pi * 2)
+
+            # Record trail positions (store as angle+r_ratio snapshots)
+            drift = math.sin(m["drift_phase"]) * m["radial_drift"]
+            trail_entry = (m["angle"], m["r_ratio"] + drift)
+            trail = m["trail"]
+            trail.append(trail_entry)
+            if len(trail) > 3:
+                trail.pop(0)
 
         # Update shockwave ripples
         alive_ripples = []
@@ -313,12 +357,41 @@ class Reactor(QWidget):
         hover_boost = self._hover * 0.35
         energy = self._breath * 0.5 + 0.5 + hover_boost + self._bloom * 0.4
 
+        # ── 0. v4.0: Ambient Halo Ring (visible in CENTER/RAIL mode) ──
+        # A faint secondary glow ring outside the main reactor body,
+        # like JARVIS's ambient arc reactor halo.
+        parent_mode = getattr(self.parent(), "mode", None) if self.parent() else None
+        if parent_mode and parent_mode != "ORB":
+            halo_r = r * 1.35
+            halo_grad = QRadialGradient(cx, cy, halo_r)
+            halo_inner = QColor(ARC_GLOW)
+            halo_inner.setAlpha(int(30 + 25 * energy))
+            halo_mid = QColor(CYAN_DIM)
+            halo_mid.setAlpha(int(15 + 12 * energy))
+            halo_outer = QColor(0, 0, 0, 0)
+            halo_grad.setColorAt(0.65, halo_inner)
+            halo_grad.setColorAt(0.82, halo_mid)
+            halo_grad.setColorAt(1.0, halo_outer)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(halo_grad))
+            p.drawEllipse(QRectF(cx - halo_r, cy - halo_r, halo_r * 2.0, halo_r * 2.0))
+
+            # Thin halo ring line
+            halo_ring_c = QColor(CYAN)
+            halo_ring_c.setAlpha(int(25 + 20 * energy))
+            p.setPen(QPen(halo_ring_c, 0.8))
+            p.setBrush(Qt.NoBrush)
+            ring_r = r * 1.18
+            p.drawEllipse(QRectF(cx - ring_r, cy - ring_r, ring_r * 2.0, ring_r * 2.0))
+
         # ── 1. Deep Atmospheric Space Glow (Volumetric Halo) ──
-        # Multi-stop cubic falloff so it blends seamlessly into the desktop
-        glow_r = r * 1.55
+        # v4.1: Tighter glow in ORB mode for a clean floating look
+        is_orb_mode = getattr(self.parent(), "mode", None) == "ORB" if self.parent() else False
+        glow_r = r * (1.10 if is_orb_mode else 1.45)
         ambient_g = QRadialGradient(cx, cy, glow_r)
         c_glow = QColor(theme_glow)
-        glow_alpha = int(max(15, min(220, (35 + 55 * energy) * 1.1)))
+        glow_base = (20 + 35 * energy) if is_orb_mode else (35 + 55 * energy)
+        glow_alpha = int(max(10, min(180, glow_base)))
         c_glow.setAlpha(glow_alpha)
         ambient_g.setColorAt(0.0, c_glow)
         c_mid = QColor(0, 160, 240 if not is_stop else 40)
@@ -346,13 +419,13 @@ class Reactor(QWidget):
                 p.drawEllipse(QRectF(cx - rip_r, cy - rip_r, rip_r * 2.0, rip_r * 2.0))
 
         # ── 3. Cyber Reticle & Corner Brackets ──
-        reticle_r = r * 1.08
-        bracket_len = reticle_r * 0.18
+        reticle_r = r * 1.04       # v4.1: tighter reticle
+        bracket_len = reticle_r * 0.16
         p.save()
         p.translate(cx, cy)
         brk_c = QColor(CYAN)
-        brk_c.setAlpha(int(45 + 40 * energy))
-        p.setPen(QPen(brk_c, 1.2))
+        brk_c.setAlpha(int(30 + 28 * energy))  # v4.1: subtler brackets
+        p.setPen(QPen(brk_c, 1.0))
         # 4 Corner brackets at 45°, 135°, 225°, 315°
         for corner_angle in [45, 135, 225, 315]:
             p.save()
@@ -535,7 +608,7 @@ class Reactor(QWidget):
             p.drawLine(QPointF(tx1, ty1), QPointF(tx2, ty2))
         p.restore()
 
-        # ── 9. Floating Quantum Plasma Motes (Energy Embers) ──
+        # ── 9. Floating Quantum Plasma Motes with Firefly Trails ──
         for m in self._motes:
             # Subtle radial breathing drift
             drift = math.sin(m["drift_phase"]) * m["radial_drift"]
@@ -549,6 +622,21 @@ class Reactor(QWidget):
             mc.setAlpha(min(255, m_alpha))
 
             p.setPen(Qt.NoPen)
+
+            # v4.0: Firefly fade-trail (paint previous positions with decreasing alpha)
+            trail = m.get("trail", [])
+            for ti, (t_angle, t_r_ratio) in enumerate(trail[:-1]):  # skip current
+                trail_fade = (ti + 1) / max(1, len(trail))
+                trail_dist = r * t_r_ratio
+                t_rad = math.radians(t_angle)
+                tx = cx + trail_dist * math.cos(t_rad)
+                ty = cy + trail_dist * math.sin(t_rad)
+                trail_c = QColor(CYAN_GLOW if not is_stop else ALERT)
+                trail_c.setAlpha(int(m_alpha * 0.25 * trail_fade))
+                p.setBrush(QBrush(trail_c))
+                trail_size = m["size"] * 0.5 * trail_fade
+                p.drawEllipse(QPointF(tx, ty), trail_size, trail_size)
+
             # Soft outer halo
             mc_halo = QColor(theme_glow)
             mc_halo.setAlpha(int(m_alpha * 0.4))
@@ -586,6 +674,13 @@ class Reactor(QWidget):
         p.setBrush(QBrush(plasma_g))
         p.drawEllipse(QRectF(cx - core_r * 0.95, cy - core_r * 0.95, core_r * 1.9, core_r * 1.9))
 
+        # v4.0: Core shimmer — rapid micro-flicker over the plasma seed
+        shimmer_alpha = int(15 + 25 * abs(math.sin(self._shimmer_phase)))
+        shimmer_c = QColor(255, 255, 255, shimmer_alpha)
+        p.setBrush(QBrush(shimmer_c))
+        shimmer_r = core_r * (0.55 + 0.12 * math.sin(self._shimmer_phase * 1.7))
+        p.drawEllipse(QRectF(cx - shimmer_r, cy - shimmer_r, shimmer_r * 2.0, shimmer_r * 2.0))
+
         # Diamond energy seed (center dot)
         seed_r = max(2.5, core_r * 0.28)
         p.setBrush(QBrush(QColor(255, 255, 255, min(255, int(220 + 35 * energy)))))
@@ -595,7 +690,7 @@ class Reactor(QWidget):
         p.save()
         p.translate(cx, cy)
         p.rotate(self._spin_glint)
-        glint_len = core_r * (1.1 + 0.35 * math.sin(self._breath_phase))
+        glint_len = core_r * (1.1 + 0.35 * self._breath)
         glint_w = max(1.2, core_r * 0.12)
         glint_alpha = int(90 + 90 * energy)
 

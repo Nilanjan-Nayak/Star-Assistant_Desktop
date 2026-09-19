@@ -1,17 +1,18 @@
 """
-STAR ASSISTANT — Frontend  (v2.0 — Premium HUD)
+STAR ASSISTANT — Frontend  (v3.0 — Ultra-Premium Futuristic HUD)
 
 A PySide6 desktop-overlay implementing the HUD visual language from the
 architecture bible: navy glass, cyan life, gold confirmation, corner brackets,
 scanline materialize, and a central multi-ring reactor.
 
-Enhancements over v1.0:
-  - Cached hex grid background (pre-rendered QPainterPath, 60 FPS)
-  - Draggable ORB mode (drag anywhere on desktop)
-  - RAIL mode (400px docked sidebar on right edge)
-  - Header bar with live clock, status badge, minimize/close controls
-  - Smooth window geometry transitions (no setFixedSize lock during anim)
-  - Meta-tagged glass panels
+v3.0 Enhancements:
+  - Gradient header bar with animated separator and breathing glow
+  - Glowing input bar with animated focus border (cyan-purple gradient)
+  - Animated status footer with live metrics and breathing indicators
+  - Ambient floating particle dust overlay
+  - Smoother window transitions with spring-like easing
+  - Better layout spacing and visual hierarchy
+  - Purple accent depth for premium feel
 
 Controls (demo):
     Click the reactor (ORB mode)   -> expand to CENTER (command center)
@@ -24,6 +25,7 @@ Controls (demo):
 import sys
 import math
 import datetime
+import random
 from pathlib import Path
 
 _frontend_dir = Path(__file__).resolve().parent
@@ -33,9 +35,10 @@ if str(_frontend_dir) not in sys.path:
 if str(_backend_root) not in sys.path:
     sys.path.insert(0, str(_backend_root))
 
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, QPoint
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, QPoint, QRectF, Property
 from PySide6.QtGui import (
-    QPainter, QColor, QFont, QGuiApplication, QPainterPath, QPen, QBrush, QRadialGradient
+    QPainter, QColor, QFont, QGuiApplication, QPainterPath, QPen, QBrush,
+    QRadialGradient, QLinearGradient
 )
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout,
@@ -43,18 +46,22 @@ from PySide6.QtWidgets import (
 )
 
 from tokens import (
-    NAVY, CYAN, CYAN_GLOW, GOLD, OK, AMBER, ALERT, MOTION, MODE_ORB, MODE_CENTER, MODE_RAIL,
+    NAVY, CYAN, CYAN_GLOW, CYAN_NEON, GOLD, OK, AMBER, ALERT,
+    MOTION, MODE_ORB, MODE_CENTER, MODE_RAIL,
     SPACE_ORB_MAX, SPACE_RAIL,
-    FONT_HUD_FAMILY, FONT_HUD_SIZE_LG, FONT_HUD_SIZE, FONT_HUD_SIZE_SM,
-    FONT_MONO_FAMILY, DEEP_NAVY, TEXT_DIM, TEXT_PRIMARY,
+    FONT_HUD_FAMILY, FONT_HUD_SIZE_LG, FONT_HUD_SIZE, FONT_HUD_SIZE_SM, FONT_HUD_SIZE_XL,
+    FONT_MONO_FAMILY, DEEP_NAVY, TEXT_DIM, TEXT_PRIMARY, TEXT_BRIGHT,
+    GLASS_DEEP, GLASS_DARK, GLASS_MID, PURPLE_DIM, PURPLE_ACCENT,
+    BORDER_GLOW_CYAN, BORDER_GLOW_PURPLE,
 )
 from reactor import Reactor, STATE_IDLE, STATE_THINK, STATE_SPEAK, STATE_ACT
 from panels import GlassPanel
 from content import ActivityLog, MissionCard
 from Backend.bridge import AssistantBridge
+from result_panel import ReachResultPanel
 
 ORB_SIZE = SPACE_ORB_MAX + 48     # window padding around reactor for unclipped glow & shockwaves
-CENTER_SIZE = (980, 640)
+CENTER_SIZE = (1020, 680)          # slightly larger for breathing room
 RAIL_SIZE = (SPACE_RAIL, 0)       # height = screen height
 
 DEMO_LOG_LINES = [
@@ -79,7 +86,8 @@ DEMO_MISSIONS = [
 class HexBackground(QWidget):
     """Faint breathing hex grid — hex.breathe, 6s loop, opacity 0.04-0.09.
     Purely decorative; sits behind panels. Hex geometry is pre-cached as a
-    QPainterPath so each frame is a single drawPath() call."""
+    QPainterPath so each frame is a single drawPath() call.
+    v3.0: Added subtle purple color shift in breathing."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -100,7 +108,7 @@ class HexBackground(QWidget):
     def _rebuild_cache(self, w, h):
         """Pre-compute entire hex grid as a single QPainterPath."""
         path = QPainterPath()
-        size = 32
+        size = 34  # slightly larger hexes
         hex_h = size * 0.87
         r = size / 2
         row = 0
@@ -138,28 +146,106 @@ class HexBackground(QWidget):
             # In ORB mode, apply a soft radial vignette so the hex grid fades smoothly to 0% alpha
             # without hard square clipping boundaries.
             is_orb = getattr(self.parent(), "mode", None) == MODE_ORB
-            alpha = 0.04 + 0.05 * (0.5 + 0.5 * math.sin(self._t * 2 * math.pi))
+            phase = 0.5 + 0.5 * math.sin(self._t * 2 * math.pi)
+            alpha = 0.03 + 0.05 * phase
+
+            # v3.0: subtle color shift between cyan and purple
+            cyan_mix = 0.7 + 0.3 * phase
+            r_val = int(0 + 80 * (1 - cyan_mix))
+            g_val = int(200 * cyan_mix + 50 * (1 - cyan_mix))
+            b_val = 255
 
             if is_orb:
                 cx, cy = w / 2.0, h / 2.0
                 r_max = min(w, h) / 2.0
                 mask_grad = QRadialGradient(cx, cy, r_max)
-                c_center = QColor(CYAN)
+                c_center = QColor(r_val, g_val, b_val)
                 c_center.setAlphaF(alpha)
-                c_mid = QColor(CYAN)
-                c_mid.setAlphaF(alpha * 0.35)
-                c_zero = QColor(CYAN)
+                c_mid = QColor(r_val, g_val, b_val)
+                c_mid.setAlphaF(alpha * 0.3)
+                c_zero = QColor(r_val, g_val, b_val)
                 c_zero.setAlphaF(0.0)
                 mask_grad.setColorAt(0.0, c_center)
-                mask_grad.setColorAt(0.65, c_mid)
-                mask_grad.setColorAt(0.92, c_zero)
-                p.setPen(QPen(QBrush(mask_grad), 0.7))
+                mask_grad.setColorAt(0.6, c_mid)
+                mask_grad.setColorAt(0.9, c_zero)
+                p.setPen(QPen(QBrush(mask_grad), 0.6))
             else:
-                pen_color = QColor(CYAN)
+                pen_color = QColor(r_val, g_val, b_val)
                 pen_color.setAlphaF(alpha)
-                p.setPen(QPen(pen_color, 0.6))
+                p.setPen(QPen(pen_color, 0.5))
 
             p.drawPath(self._cached_path)
+        finally:
+            if p.isActive():
+                p.end()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Floating ambient particles (v3.0)
+# ═══════════════════════════════════════════════════════════════════════
+
+class AmbientParticles(QWidget):
+    """Subtle floating particles for futuristic depth atmosphere."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._t = 0.0
+        self._particles = []
+        for _ in range(18):
+            self._particles.append({
+                "x": random.uniform(0.05, 0.95),
+                "y": random.uniform(0.05, 0.95),
+                "speed": random.uniform(0.0003, 0.0012),
+                "drift_x": random.uniform(-0.0004, 0.0004),
+                "size": random.uniform(1.2, 2.8),
+                "alpha": random.uniform(0.08, 0.25),
+                "phase": random.uniform(0, math.pi * 2),
+            })
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(45)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start()
+
+    def _tick(self):
+        self._t += 0.045
+        for pt in self._particles:
+            pt["y"] -= pt["speed"]
+            pt["x"] += pt["drift_x"] + 0.0001 * math.sin(self._t + pt["phase"])
+            if pt["y"] < -0.02:
+                pt["y"] = 1.02
+                pt["x"] = random.uniform(0.05, 0.95)
+            if pt["x"] < -0.02 or pt["x"] > 1.02:
+                pt["x"] = random.uniform(0.05, 0.95)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        if not p.isActive():
+            return
+        try:
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            w, h = self.width(), self.height()
+            for pt in self._particles:
+                px = pt["x"] * w
+                py = pt["y"] * h
+                breath = 0.5 + 0.5 * math.sin(self._t * 0.8 + pt["phase"])
+                alpha = pt["alpha"] * (0.4 + 0.6 * breath)
+                size = pt["size"] * (0.8 + 0.4 * breath)
+
+                # Particle glow
+                glow_c = QColor(0, 210, 255, int(alpha * 80))
+                p.setPen(Qt.NoPen)
+                p.setBrush(QBrush(glow_c))
+                p.drawEllipse(int(px - size * 2), int(py - size * 2),
+                             int(size * 4), int(size * 4))
+
+                # Core dot
+                core_c = QColor(180, 240, 255, int(alpha * 255))
+                p.setBrush(QBrush(core_c))
+                p.drawEllipse(int(px - size / 2), int(py - size / 2),
+                             int(size), int(size))
         finally:
             if p.isActive():
                 p.end()
@@ -170,27 +256,28 @@ class HexBackground(QWidget):
 # ═══════════════════════════════════════════════════════════════════════
 
 class CyberButton(QPushButton):
-    """Tiny HUD-styled control button with hover glow."""
+    """Tiny HUD-styled control button with hover glow — v3.0 premium."""
 
     def __init__(self, text: str, color: QColor = CYAN, parent=None):
         super().__init__(text, parent)
         self._color = color
-        self.setFixedSize(28, 22)
+        self.setFixedSize(30, 24)
         self.setCursor(Qt.PointingHandCursor)
         self.setFont(QFont(FONT_MONO_FAMILY, FONT_HUD_SIZE_SM, QFont.Bold))
         self._set_style(False)
 
     def _set_style(self, hovered: bool):
         c = self._color
-        bg_alpha = 40 if hovered else 12
-        border_alpha = 120 if hovered else 50
-        text_alpha = 255 if hovered else 180
+        bg_alpha = 45 if hovered else 10
+        border_alpha = 130 if hovered else 40
+        text_alpha = 255 if hovered else 170
+        shadow = f"0 0 8px rgba({c.red()},{c.green()},{c.blue()},0.3)" if hovered else "none"
         self.setStyleSheet(
             f"QPushButton {{ "
             f"color: rgba({c.red()},{c.green()},{c.blue()},{text_alpha}); "
             f"background: rgba({c.red()},{c.green()},{c.blue()},{bg_alpha}); "
             f"border: 1px solid rgba({c.red()},{c.green()},{c.blue()},{border_alpha}); "
-            f"border-radius: 4px; padding: 0px; }}"
+            f"border-radius: 5px; padding: 0px; }}"
         )
 
     def enterEvent(self, event):
@@ -203,25 +290,28 @@ class CyberButton(QPushButton):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Header bar (title + clock + status + controls)
+# Header bar (title + clock + status + controls) — v3.0 premium
 # ═══════════════════════════════════════════════════════════════════════
 
 class HeaderBar(QWidget):
-    """Top bar: logo / title, live clock, online status, and control buttons."""
+    """Top bar with gradient glass backdrop, logo, live clock,
+    online status, and control buttons."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("background: transparent;")
-        self.setFixedHeight(36)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedHeight(42)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 0, 8, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(14, 0, 10, 0)
+        layout.setSpacing(14)
 
-        # Title
-        title = QLabel("STAR  HUD  v2.4")
+        # Title with letter-spacing
+        title = QLabel("✦  STAR  HUD  v3.0")
         title.setFont(QFont(FONT_HUD_FAMILY, FONT_HUD_SIZE_LG, QFont.DemiBold))
-        title.setStyleSheet(f"color: {GOLD.name()}; letter-spacing: 4px; background: transparent;")
+        title.setStyleSheet(
+            f"color: {GOLD.name()}; letter-spacing: 5px; background: transparent;"
+        )
         layout.addWidget(title)
 
         layout.addStretch(1)
@@ -229,23 +319,25 @@ class HeaderBar(QWidget):
         # Live clock
         self._clock = QLabel("")
         self._clock.setFont(QFont(FONT_MONO_FAMILY, FONT_HUD_SIZE_SM))
-        self._clock.setStyleSheet(f"color: rgba(180,210,230,160); background: transparent;")
+        self._clock.setStyleSheet(
+            f"color: rgba(150, 200, 230, 0.65); background: transparent;"
+        )
         layout.addWidget(self._clock)
 
         # Status badge
-        status_badge = QLabel("  ● ONLINE  ")
+        status_badge = QLabel("  ● NEURAL LINK  ")
         status_badge.setFont(QFont(FONT_MONO_FAMILY, FONT_HUD_SIZE_SM - 1, QFont.DemiBold))
         status_badge.setStyleSheet(
-            f"color: {GOLD.name()}; "
-            f"background: rgba(201,162,39,18); "
-            f"border: 1px solid rgba(201,162,39,70); "
-            f"border-radius: 4px;"
+            f"color: {OK.name()}; "
+            f"background: rgba(61,255,154,0.06); "
+            f"border: 1px solid rgba(61,255,154,0.25); "
+            f"border-radius: 4px; padding: 1px 6px;"
         )
         layout.addWidget(status_badge)
 
         # Separator
         sep = QLabel("│")
-        sep.setStyleSheet("color: rgba(0,212,255,40); background: transparent;")
+        sep.setStyleSheet("color: rgba(0,212,255,0.2); background: transparent;")
         layout.addWidget(sep)
 
         # Control buttons
@@ -272,6 +364,244 @@ class HeaderBar(QWidget):
         now = datetime.datetime.now().strftime("%H:%M:%S")
         self._clock.setText(f"SYS.TIME  {now}")
 
+    def paintEvent(self, event):
+        """Render gradient glass backdrop for the header."""
+        p = QPainter(self)
+        if not p.isActive():
+            return
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+
+        # Gradient glass backdrop
+        grad = QLinearGradient(0, 0, w, 0)
+        grad.setColorAt(0.0, QColor(4, 10, 26, 200))
+        grad.setColorAt(0.5, QColor(6, 14, 32, 180))
+        grad.setColorAt(1.0, QColor(4, 10, 26, 200))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRect(0, 0, w, h)
+
+        # Bottom gradient separator line (cyan -> purple -> cyan)
+        line_grad = QLinearGradient(0, h - 1, w, h - 1)
+        line_grad.setColorAt(0.0, QColor(0, 200, 255, 0))
+        line_grad.setColorAt(0.15, QColor(0, 200, 255, 80))
+        line_grad.setColorAt(0.5, QColor(120, 80, 255, 60))
+        line_grad.setColorAt(0.85, QColor(0, 200, 255, 80))
+        line_grad.setColorAt(1.0, QColor(0, 200, 255, 0))
+        p.setPen(QPen(QBrush(line_grad), 1.0))
+        p.drawLine(0, h - 1, w, h - 1)
+
+        p.end()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Status footer bar (v3.0 — animated metrics)
+# ═══════════════════════════════════════════════════════════════════════
+
+class StatusFooter(QWidget):
+    """Bottom status bar with live animated metrics and breathing indicators."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedHeight(26)
+        self._t = 0.0
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(50)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start()
+
+    def _tick(self):
+        self._t += 0.05
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        if not p.isActive():
+            return
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+
+        # Gradient backdrop
+        grad = QLinearGradient(0, 0, w, 0)
+        grad.setColorAt(0.0, QColor(3, 8, 20, 210))
+        grad.setColorAt(0.5, QColor(5, 14, 30, 190))
+        grad.setColorAt(1.0, QColor(3, 8, 20, 210))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRect(0, 0, w, h)
+
+        # Top separator (gradient line)
+        line_grad = QLinearGradient(0, 0, w, 0)
+        line_grad.setColorAt(0.0, QColor(0, 200, 255, 0))
+        line_grad.setColorAt(0.2, QColor(0, 200, 255, 50))
+        line_grad.setColorAt(0.5, QColor(100, 70, 255, 35))
+        line_grad.setColorAt(0.8, QColor(0, 200, 255, 50))
+        line_grad.setColorAt(1.0, QColor(0, 200, 255, 0))
+        p.setPen(QPen(QBrush(line_grad), 1.0))
+        p.drawLine(0, 0, w, 0)
+
+        phase = 0.5 + 0.5 * math.sin(self._t * 0.5)
+
+        # Left metrics
+        p.setFont(QFont(FONT_MONO_FAMILY, FONT_HUD_SIZE_SM - 1))
+        p.setPen(QColor(120, 180, 210, 130))
+
+        # System status dot
+        dot_alpha = int(100 + 80 * phase)
+        p.setPen(QColor(61, 255, 154, dot_alpha))
+        p.drawText(12, h - 8, "●")
+
+        p.setPen(QColor(120, 180, 210, 130))
+        p.drawText(24, h - 8, "SYSTEM NOMINAL")
+
+        p.setPen(QColor(80, 150, 190, 100))
+        p.drawText(145, h - 8, "•")
+
+        p.setPen(QColor(120, 180, 210, 130))
+        p.drawText(155, h - 8, "NEURAL LINK: ACTIVE")
+
+        p.setPen(QColor(80, 150, 190, 100))
+        p.drawText(300, h - 8, "•")
+
+        latency = 8 + int(5 * phase)
+        p.setPen(QColor(120, 180, 210, 130))
+        p.drawText(310, h - 8, f"LATENCY: {latency}ms")
+
+        # Right side: uptime
+        now = datetime.datetime.now()
+        uptime_str = now.strftime("%H:%M:%S")
+        p.setPen(QColor(100, 160, 200, 110))
+        uptime_text = f"UPTIME: {uptime_str}"
+        fm = p.fontMetrics()
+        tw = fm.horizontalAdvance(uptime_text)
+        p.drawText(w - tw - 14, h - 8, uptime_text)
+
+        p.end()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Glowing Input Bar (v3.0)
+# ═══════════════════════════════════════════════════════════════════════
+
+class GlowingInputBar(QWidget):
+    """Premium input bar with animated focus glow border."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self._focus_val = 0.0
+        self._glow_t = 0.0
+
+        self.input = QLineEdit(self)
+        self.input.setPlaceholderText(
+            "💬 Ask Star or type command (e.g. 'volume 20% barao', 'kemon acho')..."
+        )
+        self.input.setFont(QFont(FONT_HUD_FAMILY, FONT_HUD_SIZE))
+        self.input.setStyleSheet(
+            f"QLineEdit {{ "
+            f"color: {TEXT_PRIMARY.name()}; "
+            f"background: transparent; "
+            f"border: none; "
+            f"padding: 6px 16px; "
+            f"selection-background-color: rgba(0, 200, 255, 0.25); "
+            f"}} "
+        )
+
+        # Focus animations
+        self.input.installEventFilter(self)
+
+        # Glow timer
+        self._glow_timer = QTimer(self)
+        self._glow_timer.setInterval(35)
+        self._glow_timer.timeout.connect(self._glow_tick)
+        self._glow_timer.start()
+
+    def _glow_tick(self):
+        self._glow_t += 0.035 / (MOTION["glow.pulse"] / 1000.0)
+        self.update()
+
+    def eventFilter(self, obj, event):
+        if obj == self.input:
+            from PySide6.QtCore import QEvent
+            if event.type() == QEvent.FocusIn:
+                self._animate_focus(1.0)
+            elif event.type() == QEvent.FocusOut:
+                self._animate_focus(0.0)
+        return super().eventFilter(obj, event)
+
+    def _animate_focus(self, target):
+        anim = QPropertyAnimation(self, b"focus_val")
+        anim.setDuration(MOTION["input.focus"] if target > 0 else MOTION["input.blur"])
+        anim.setStartValue(self._focus_val)
+        anim.setEndValue(target)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        anim.start()
+        self._focus_anim = anim
+
+    def get_focus_val(self):
+        return self._focus_val
+
+    def set_focus_val(self, v):
+        self._focus_val = v
+        self.update()
+
+    focus_val = Property(float, get_focus_val, set_focus_val)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.input.setGeometry(0, 0, self.width(), self.height())
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        if not p.isActive():
+            return
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        rect = QRectF(0, 0, w, h)
+        radius = 8
+        focus = self._focus_val
+        glow_phase = 0.5 + 0.5 * math.sin(self._glow_t * 2 * math.pi)
+
+        # ── Glass background ──
+        bg_alpha = int(210 + 30 * focus)
+        glass = QLinearGradient(0, 0, w, 0)
+        glass.setColorAt(0.0, QColor(5, 14, 32, bg_alpha))
+        glass.setColorAt(0.5, QColor(8, 20, 44, bg_alpha - 10))
+        glass.setColorAt(1.0, QColor(5, 14, 32, bg_alpha))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(glass))
+        p.drawRoundedRect(rect, radius, radius)
+
+        # ── Outer focus glow ──
+        if focus > 0.05:
+            glow_expand = 3 + 2 * focus
+            glow_alpha = int(15 * focus * (0.6 + 0.4 * glow_phase))
+            glow_grad = QRadialGradient(w / 2, h / 2, max(w, h) * 0.6)
+            glow_grad.setColorAt(0.0, QColor(0, 200, 255, glow_alpha))
+            glow_grad.setColorAt(0.5, QColor(100, 70, 255, int(glow_alpha * 0.4)))
+            glow_grad.setColorAt(1.0, QColor(0, 0, 0, 0))
+            p.setBrush(QBrush(glow_grad))
+            p.drawRoundedRect(rect.adjusted(-glow_expand, -glow_expand,
+                                            glow_expand, glow_expand),
+                             radius + 2, radius + 2)
+
+        # ── Animated gradient border ──
+        border_alpha = int(50 + 90 * focus + 20 * glow_phase * focus)
+        border_grad = QLinearGradient(0, 0, w, h)
+        border_grad.setColorAt(0.0, QColor(0, 210, 255, border_alpha))
+        border_grad.setColorAt(0.4, QColor(80, 60, 255, int(border_alpha * 0.5 * glow_phase)))
+        border_grad.setColorAt(0.7, QColor(0, 220, 255, int(border_alpha * 0.8)))
+        border_grad.setColorAt(1.0, QColor(100, 80, 255, int(border_alpha * 0.4)))
+
+        border_w = 1.0 + 0.5 * focus
+        p.setPen(QPen(QBrush(border_grad), border_w))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
+
+        p.end()
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Main window
@@ -292,6 +622,10 @@ class StarWindow(QWidget):
         self.hex_bg = HexBackground(self)
         self.hex_bg.lower()
 
+        # Ambient particles (v3.0)
+        self.particles = AmbientParticles(self)
+        self.particles.lower()
+
         self.reactor = Reactor(diameter=SPACE_ORB_MAX, parent=self)
         self.reactor.clicked.connect(self._on_reactor_clicked)
 
@@ -302,42 +636,44 @@ class StarWindow(QWidget):
         self.header.btn_rail.clicked.connect(self._toggle_rail)
         self.header.hide()
 
+        # Status footer (v3.0)
+        self.footer = StatusFooter(self)
+        self.footer.hide()
+
         # Glass panels
         self.activity_log = ActivityLog(DEMO_LOG_LINES)
         self.log_panel = GlassPanel(self)
         self.log_panel.set_meta_tag("SYS.TELEMETRY // 01")
+        self.log_panel.set_sector_tag("SECTOR.ACTIVE")
         self.log_panel.set_content(self.activity_log)
         self.log_panel.hide()
 
         self.mission_panel = GlassPanel(self)
         self.mission_panel.set_meta_tag("MISSION.RAIL // 02")
+        self.mission_panel.set_sector_tag("SECTOR.ACTIVE")
         self._build_mission_grid()
         self.mission_panel.hide()
 
-        # HUD Command Input Bar
-        self.cmd_input = QLineEdit(self)
-        self.cmd_input.setPlaceholderText("💬 Ask Star or type command (e.g. 'volume 20% barao', 'kemon acho')...")
-        self.cmd_input.setFont(QFont(FONT_HUD_FAMILY, FONT_HUD_SIZE))
-        self.cmd_input.setStyleSheet(
-            f"QLineEdit {{ "
-            f"color: {TEXT_PRIMARY.name()}; "
-            f"background: rgba(6, 16, 36, 0.90); "
-            f"border: 1px solid rgba(0, 212, 255, 0.45); "
-            f"border-radius: 6px; "
-            f"padding: 6px 14px; "
-            f"}} "
-            f"QLineEdit:focus {{ "
-            f"border: 1px solid rgba(0, 229, 255, 0.95); "
-            f"background: rgba(8, 26, 56, 0.98); "
-            f"}}"
-        )
-        self.cmd_input.returnPressed.connect(self._on_cmd_submitted)
-        self.cmd_input.hide()
+        # Agent Reach result surface. It reuses the same Star glass HUD; no
+        # second result window is created for each Internet query.
+        self._result_visible = False
+        self.result_panel = GlassPanel(self)
+        self.result_panel.set_meta_tag("REACH.RESULT // 03")
+        self.result_panel.set_sector_tag("SECTOR.REACH")
+        self.result_content = ReachResultPanel()
+        self.result_panel.set_content(self.result_content)
+        self.result_panel.hide()
+
+        # HUD Command Input Bar (v3.0 — glowing)
+        self.cmd_bar = GlowingInputBar(self)
+        self.cmd_bar.input.returnPressed.connect(self._on_cmd_submitted)
+        self.cmd_bar.hide()
 
         # Connect Assistant Brain Bridge (replaces dummy demo timer)
         self.bridge = AssistantBridge(self)
         self.bridge.state_changed.connect(self.reactor.set_state)
         self.bridge.log_emitted.connect(self._on_bridge_log)
+        self.bridge.reach_result_ready.connect(self._on_reach_result)
 
         # Use native window opacity instead of QGraphicsOpacityEffect
         # to avoid QPainter buffer conflicts with child widget paintEvents
@@ -351,20 +687,37 @@ class StarWindow(QWidget):
         content = QWidget()
         content.setStyleSheet("background: transparent;")
         grid = QVBoxLayout(content)
-        grid.setSpacing(8)
+        grid.setSpacing(10)
 
-        title = QLabel("◆  MISSION RAIL")
+        # Header with gradient
+        header_row = QHBoxLayout()
+        header_row.setSpacing(8)
+        dot = QLabel("◆")
+        dot.setFont(QFont(FONT_HUD_FAMILY, FONT_HUD_SIZE_LG))
+        dot.setStyleSheet(f"color: {CYAN_GLOW.name()}; background: transparent;")
+        header_row.addWidget(dot)
+
+        title = QLabel("MISSION RAIL")
         title.setFont(QFont(FONT_HUD_FAMILY, FONT_HUD_SIZE_LG, QFont.DemiBold))
-        title.setStyleSheet(f"color: {GOLD.name()}; letter-spacing: 2px; background: transparent;")
-        grid.addWidget(title)
+        title.setStyleSheet(
+            f"color: {TEXT_BRIGHT.name()}; letter-spacing: 3px; background: transparent;"
+        )
+        header_row.addWidget(title)
+        header_row.addStretch(1)
+        grid.addLayout(header_row)
 
-        # Gradient rule
+        # Gradient rule (cyan -> purple -> cyan)
         rule = QFrame()
         rule.setFixedHeight(1)
         rule.setStyleSheet(
             f"background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-            f"stop:0 transparent, stop:0.15 rgba(0,212,255,80), "
-            f"stop:0.85 rgba(0,212,255,80), stop:1 transparent);"
+            f"stop:0 transparent, "
+            f"stop:0.1 rgba(0,212,255,40), "
+            f"stop:0.3 rgba(0,212,255,90), "
+            f"stop:0.5 rgba(120,80,255,55), "
+            f"stop:0.7 rgba(0,212,255,90), "
+            f"stop:0.9 rgba(0,212,255,40), "
+            f"stop:1 transparent);"
         )
         grid.addWidget(rule)
 
@@ -385,11 +738,14 @@ class StarWindow(QWidget):
         self.reactor.setFixedSize(SPACE_ORB_MAX, SPACE_ORB_MAX)
         self.reactor.move((ORB_SIZE - SPACE_ORB_MAX) // 2, (ORB_SIZE - SPACE_ORB_MAX) // 2)
         self.hex_bg.setGeometry(0, 0, ORB_SIZE, ORB_SIZE)
+        self.particles.setGeometry(0, 0, ORB_SIZE, ORB_SIZE)
         self.header.hide()
+        self.footer.hide()
         self.log_panel.hide()
         self.mission_panel.hide()
-        if hasattr(self, "cmd_input"):
-            self.cmd_input.hide()
+        self.result_panel.hide()
+        if hasattr(self, "cmd_bar"):
+            self.cmd_bar.hide()
 
     def _place_on_screen(self):
         screen = QGuiApplication.primaryScreen().availableGeometry()
@@ -399,7 +755,6 @@ class StarWindow(QWidget):
             w, h = CENTER_SIZE
             self.move(screen.center().x() - w // 2, screen.center().y() - h // 2)
         elif self.mode == MODE_RAIL:
-            rail_h = screen.height()
             self.move(screen.right() - SPACE_RAIL, screen.top())
 
     def _layout_center(self):
@@ -408,19 +763,30 @@ class StarWindow(QWidget):
         self.setMaximumSize(16777215, 16777215)
         self.resize(w, h)
         self.hex_bg.setGeometry(0, 0, w, h)
+        self.particles.setGeometry(0, 0, w, h)
 
-        self.reactor.setFixedSize(76, 76)
-        self.reactor.move(24, 46)
+        self.reactor.setFixedSize(72, 72)
+        self.reactor.move(24, 50)
 
-        self.header.setGeometry(0, 6, w, 36)
+        self.header.setGeometry(0, 6, w, 42)
         self.header.show()
 
-        self.mission_panel.setGeometry(24, 128, w - 48, 215)
-        self.log_panel.setGeometry(24, 355, w - 48, h - 355 - 68)
+        self.footer.setGeometry(0, h - 26, w, 26)
+        self.footer.show()
 
-        if hasattr(self, "cmd_input"):
-            self.cmd_input.setGeometry(24, h - 56, w - 48, 38)
-            self.cmd_input.show()
+        if self._result_visible:
+            self.mission_panel.hide()
+            self.log_panel.hide()
+            self.result_panel.setGeometry(24, 96, w - 48, h - 186)
+            self.result_panel.show()
+        else:
+            self.result_panel.hide()
+            self.mission_panel.setGeometry(24, 130, w - 48, 225)
+            self.log_panel.setGeometry(24, 368, w - 48, h - 368 - 90)
+
+        if hasattr(self, "cmd_bar"):
+            self.cmd_bar.setGeometry(24, h - 68, w - 48, 38)
+            self.cmd_bar.show()
 
     def _layout_rail(self):
         screen = QGuiApplication.primaryScreen().availableGeometry()
@@ -430,19 +796,30 @@ class StarWindow(QWidget):
         self.setMaximumSize(16777215, 16777215)
         self.resize(w, h)
         self.hex_bg.setGeometry(0, 0, w, h)
+        self.particles.setGeometry(0, 0, w, h)
 
-        self.reactor.setFixedSize(60, 60)
-        self.reactor.move(20, 44)
+        self.reactor.setFixedSize(58, 58)
+        self.reactor.move(20, 48)
 
-        self.header.setGeometry(0, 6, w, 36)
+        self.header.setGeometry(0, 6, w, 42)
         self.header.show()
 
-        self.mission_panel.setGeometry(16, 112, w - 32, 280)
-        self.log_panel.setGeometry(16, 404, w - 32, h - 404 - 68)
+        self.footer.setGeometry(0, h - 26, w, 26)
+        self.footer.show()
 
-        if hasattr(self, "cmd_input"):
-            self.cmd_input.setGeometry(16, h - 56, w - 32, 38)
-            self.cmd_input.show()
+        if self._result_visible:
+            self.mission_panel.hide()
+            self.log_panel.hide()
+            self.result_panel.setGeometry(16, 96, w - 32, h - 186)
+            self.result_panel.show()
+        else:
+            self.result_panel.hide()
+            self.mission_panel.setGeometry(16, 116, w - 32, 290)
+            self.log_panel.setGeometry(16, 418, w - 32, h - 418 - 90)
+
+        if hasattr(self, "cmd_bar"):
+            self.cmd_bar.setGeometry(16, h - 68, w - 32, 38)
+            self.cmd_bar.show()
 
     # -- mode transitions -----------------------------------------------------
     def _on_reactor_clicked(self):
@@ -475,14 +852,17 @@ class StarWindow(QWidget):
         self._anim_ref = anim
 
         # Delay panel materialization until geometry is partially settled
-        QTimer.singleShot(100, self.mission_panel.materialize)
-        QTimer.singleShot(200, self.log_panel.materialize)
-        QTimer.singleShot(350, self.cmd_input.setFocus)
+        if self._result_visible:
+            QTimer.singleShot(180, self.result_panel.materialize)
+        else:
+            QTimer.singleShot(120, self.mission_panel.materialize)
+            QTimer.singleShot(220, self.log_panel.materialize)
+        QTimer.singleShot(380, lambda: self.cmd_bar.input.setFocus())
 
     def _collapse_to_orb(self):
         self.reactor.set_state(STATE_IDLE)
-        if hasattr(self, "cmd_input"):
-            self.cmd_input.hide()
+        if hasattr(self, "cmd_bar"):
+            self.cmd_bar.hide()
 
         def after_dismiss():
             self.mode = MODE_ORB
@@ -502,7 +882,11 @@ class StarWindow(QWidget):
 
         self.mission_panel.dismiss()
         self.log_panel.dismiss(on_finished=after_dismiss)
+        if self._result_visible:
+            self.result_panel.dismiss()
+            self._result_visible = False
         self.header.hide()
+        self.footer.hide()
 
     def _toggle_rail(self):
         if self.mode == MODE_CENTER:
@@ -517,6 +901,8 @@ class StarWindow(QWidget):
         # Dismiss panels, then re-layout and re-materialize
         self.mission_panel.dismiss()
         self.log_panel.dismiss()
+        if self._result_visible:
+            self.result_panel.dismiss()
 
         def do_rail():
             self._layout_rail()
@@ -532,8 +918,11 @@ class StarWindow(QWidget):
             anim.start()
             self._anim_ref = anim
 
-            QTimer.singleShot(200, self.mission_panel.materialize)
-            QTimer.singleShot(300, self.log_panel.materialize)
+            if self._result_visible:
+                QTimer.singleShot(200, self.result_panel.materialize)
+            else:
+                QTimer.singleShot(200, self.mission_panel.materialize)
+                QTimer.singleShot(300, self.log_panel.materialize)
 
         QTimer.singleShot(MOTION["panel.out"] + 50, do_rail)
 
@@ -543,6 +932,8 @@ class StarWindow(QWidget):
 
         self.mission_panel.dismiss()
         self.log_panel.dismiss()
+        if self._result_visible:
+            self.result_panel.dismiss()
 
         def do_center():
             self._layout_center()
@@ -558,17 +949,30 @@ class StarWindow(QWidget):
             anim.start()
             self._anim_ref = anim
 
-            QTimer.singleShot(200, self.mission_panel.materialize)
-            QTimer.singleShot(300, self.log_panel.materialize)
+            if self._result_visible:
+                QTimer.singleShot(200, self.result_panel.materialize)
+            else:
+                QTimer.singleShot(200, self.mission_panel.materialize)
+                QTimer.singleShot(300, self.log_panel.materialize)
 
         QTimer.singleShot(MOTION["panel.out"] + 50, do_center)
 
     # -- Brain & Command handling ----------------------------------------------
     def _on_cmd_submitted(self):
-        text = self.cmd_input.text().strip()
+        text = self.cmd_bar.input.text().strip()
         if text:
-            self.cmd_input.clear()
+            self.cmd_bar.input.clear()
             self.bridge.send_query(text)
+
+    def _on_reach_result(self, result: dict):
+        """Render Internet results in the existing Star visual desktop."""
+        self._result_visible = True
+        self.result_content.set_result(result)
+        if self.mode == MODE_ORB:
+            self._expand_to_center()
+        else:
+            self._layout_center() if self.mode == MODE_CENTER else self._layout_rail()
+            QTimer.singleShot(120, self.result_panel.materialize)
 
     def _on_bridge_log(self, text: str, color_tag: str):
         cmap = {

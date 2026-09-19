@@ -67,6 +67,7 @@ from typing import (
     Deque,
     Dict,
     Final,
+    Generator,
     Generic,
     Iterable,
     Iterator,
@@ -400,7 +401,7 @@ BUS     = EventBus()
 
 # ── Tracing ─────────────────────────────────────────────────────────────
 @contextmanager
-def span(name: str, **attrs: Any) -> Iterator[Dict[str, Any]]:
+def span(name: str, **attrs: Any) -> Generator[Dict[str, Any], None, None]:
     t0 = time.perf_counter()
     ctx: Dict[str, Any] = {"name": name, "attrs": dict(attrs)}
     try:
@@ -905,7 +906,18 @@ class ScreenDiffer:
             from PIL import ImageChops
             diff = ImageChops.difference(a.image, b.image)
             extrema = diff.getextrema()
-            max_diff = max(max(e) for e in extrema)
+            if isinstance(extrema, tuple):
+                flat_vals: List[float] = []
+                for item in extrema:
+                    if isinstance(item, tuple):
+                        flat_vals.extend(float(x) for x in item)
+                    else:
+                        flat_vals.append(float(item))
+                max_diff = max(flat_vals) if flat_vals else 0.0
+            elif isinstance(extrema, (int, float)):
+                max_diff = float(extrema)
+            else:
+                max_diff = 0.0
             return float(max_diff) / 255.0
         except Exception:
             return 1.0

@@ -1313,14 +1313,15 @@ class CompanionKnowledgeEngine:
         # 2. Web Search (Google / YouTube)
         is_search = any(w in text for w in ["সার্চ", "search", "খোঁজো", "খুঁজে", "find"])
         if is_search:
-            target = "youtube" if any(yt in text for yt in [
-                "youtube", "ইউটিউব", "গান", "ভিডিও", "video"
-            ]) else "google"
-            clean_q = re.sub(
-                r"(?:ইউটিউব(?:\s*e)?|ইউটিউবে?|গুগল(?:\s*e)?|গুগলে?|গান|সার্চ(?:\s*করো)?|খোঁজো|খুঁজে দাও|search(?:\s*kor)?|find|google|youtube)\s*",
-                "", text, flags=re.IGNORECASE
-            ).strip()
-            clean_q = re.sub(r"\s*(?:search|সার্চ|খোঁজো|koro|করো)$", "", clean_q, flags=re.IGNORECASE).strip()
+            try:
+                from ..tools.web.search import extract_clean_search_query
+                clean_q, target = extract_clean_search_query(text)
+            except Exception:
+                target = "youtube" if any(yt in text for yt in ["youtube", "ইউটিউব", "গান", "ভিডিও", "video"]) else "google"
+                clean_q = re.sub(
+                    r"(?:ইউটিউব(?:\s*e)?|ইউটিউবে?|গুগল(?:\s*e)?|গুগলে?|গান|সার্চ(?:\s*করো)?|খোঁজো|খুঁজে দাও|search(?:\s*kor)?|find|google|youtube)\s*",
+                    "", text, flags=re.IGNORECASE
+                ).strip()
             if clean_q:
                 try:
                     res = execute_tool("search_web", query=clean_q, target=target)

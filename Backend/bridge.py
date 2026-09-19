@@ -2,6 +2,7 @@ import os
 import re
 import time
 import threading
+from typing import Any, Dict, Optional, Set
 import pygame
 from PySide6.QtCore import QObject, Signal, QThread, QTimer
 
@@ -27,7 +28,7 @@ class VoiceListener(QObject):
         "why", "which", "do", "does", "did", "i", "we", "it", "this", "that", "and",
     }
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._running = True
         self._paused = False
@@ -55,17 +56,17 @@ class VoiceListener(QObject):
             return True
         return False
 
-    def pause(self):
+    def pause(self) -> None:
         self._paused = True
 
-    def resume(self):
+    def resume(self) -> None:
         self._last_resume_time = time.time()
         self._paused = False
 
-    def stop(self):
+    def stop(self) -> None:
         self._running = False
 
-    def _run(self):
+    def _run(self) -> None:
         # FIX: any unexpected crash used to kill the listener thread silently —
         # the assistant then never heard anything again until restart.  Now the
         # loop self-heals with a short backoff.
@@ -78,7 +79,7 @@ class VoiceListener(QObject):
             if self._running:
                 time.sleep(1.5)  # brief backoff before restarting the mic loop
 
-    def _run_once(self):
+    def _run_once(self) -> None:
         try:
             import speech_recognition as sr
             import concurrent.futures
@@ -125,7 +126,7 @@ class VoiceListener(QObject):
                 self.speech_started.emit()
 
                 # Run Google bn-IN and en-IN concurrently for 2x faster recognition
-                def _query_google(lang):
+                def _query_google(lang: str) -> Optional[str]:
                     try:
                         return recognizer.recognize_google(audio, language=lang)
                     except Exception:
@@ -163,9 +164,9 @@ class SpeechPlayer(QObject):
     started = Signal()
     finished = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
-        self._thread = None
+        self._thread: Optional[threading.Thread] = None
         self._is_playing = False
         self._stop_event = threading.Event()
         try:
@@ -177,7 +178,7 @@ class SpeechPlayer(QObject):
     def is_playing(self) -> bool:
         return self._is_playing
 
-    def stop(self):
+    def stop(self) -> None:
         self._stop_event.set()
         try:
             if pygame.mixer.get_init():
@@ -186,13 +187,13 @@ class SpeechPlayer(QObject):
             pass
         self._is_playing = False
 
-    def play_file(self, file_path: str):
+    def play_file(self, file_path: str) -> None:
         self.stop()
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._play_worker, args=(file_path,), daemon=True)
         self._thread.start()
 
-    def _play_worker(self, file_path: str):
+    def _play_worker(self, file_path: str) -> None:
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
@@ -221,12 +222,12 @@ class BrainWorker(QThread):
     action_performed = Signal(dict)
     response_ready = Signal(dict)
 
-    def __init__(self, brain: AssistantBrain, query: str, parent=None):
+    def __init__(self, brain: AssistantBrain, query: str, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self.brain = brain
         self.query = query
 
-    def run(self):
+    def run(self) -> None:
         self.thinking_started.emit()
         try:
             result = self.brain.process(self.query)
@@ -235,15 +236,17 @@ class BrainWorker(QThread):
             # neither response_ready nor speaking_finished fired, so the mic
             # stayed paused forever and Star appeared dead.  Always answer.
             print(f"[BrainWorker] Brain error: {e}")
-            result = {
+            result: Dict[str, Any] = {
                 "response": "মাফ করো বন্ধু, ভেতরে একটু ঝামেলা হয়েছিল। এখন আমি ঠিক আছি — আবার বলো তো!",
                 "audio_path": None,
                 "actions": [],
                 "source": "error_recovery",
             }
         try:
-            for act in result.get("actions", []):
-                self.action_performed.emit(act)
+            actions = result.get("actions") or []
+            if isinstance(actions, list):
+                for act in actions:
+                    self.action_performed.emit(act)
             self.response_ready.emit(result)
         except Exception as e:
             print(f"[BrainWorker] Signal emission error: {e}")
@@ -255,10 +258,11 @@ class AssistantBridge(QObject):
     state_changed = Signal(str)            # 'idle', 'hear', 'think', 'act', 'speak'
     log_emitted = Signal(str, str)         # (text, color_tag: 'cyan' | 'gold' | 'ok' | 'alert')
     response_ready = Signal(str)           # Final text response
+    reach_result_ready = Signal(dict)      # Reach / Internet results for HUD Result Panel
     speaking_started = Signal()
     speaking_finished = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self.brain = AssistantBrain()
         if hasattr(self.brain, "agent"):
@@ -270,10 +274,10 @@ class AssistantBridge(QObject):
         self.player.finished.connect(self._on_playback_finished)
 
         # Keep strong references to running brain workers (GC safety)
-        self._workers = set()
+        self._workers: Set[BrainWorker] = set()
         self._query_seq = 0
 
-        self._active_worker = None
+        self._active_worker: Optional[BrainWorker] = None
 
         # Continuous voice listener thread
         self.voice_listener = VoiceListener(self)
@@ -281,20 +285,20 @@ class AssistantBridge(QObject):
         self.voice_listener.utterance_recognized.connect(self._on_voice_utterance)
         self.voice_listener.log_status.connect(self._on_listener_log)
 
-    def _on_agent_log(self, text: str, tag: str):
+    def _on_agent_log(self, text: str, tag: str) -> None:
         self.log_emitted.emit(text, tag)
         if any(m in text for m in ["[Agent Task]", "[Skill]", "[Vision]"]):
             self.state_changed.emit("act")
 
-    def _on_listener_log(self, text: str, tag: str):
+    def _on_listener_log(self, text: str, tag: str) -> None:
         self.log_emitted.emit(text, tag)
 
-    def _on_playback_started(self):
+    def _on_playback_started(self) -> None:
         self.voice_listener.pause()
         self.state_changed.emit("speak")
         self.speaking_started.emit()
 
-    def _on_playback_finished(self):
+    def _on_playback_finished(self) -> None:
         # If a brain query is being processed (e.g. speech was interrupted by a
         # new command), leave state & mic alone — the query's own response
         # handler manages them.  Otherwise finish speaking cleanly.
@@ -305,30 +309,30 @@ class AssistantBridge(QObject):
         self.speaking_finished.emit()
         self.voice_listener.resume()
 
-    def stop_speaking(self):
+    def stop_speaking(self) -> None:
         """Immediately stop speaking audio and return to idle."""
         if hasattr(self, "player") and self.player.is_playing():
             self.player.stop()
 
-    def _on_voice_speech_started(self):
+    def _on_voice_speech_started(self) -> None:
         # Prevent self-interruption from speaker echo
         if self.player.is_playing():
             return
         self.state_changed.emit("hear")
 
-    def _on_voice_utterance(self, text: str):
+    def _on_voice_utterance(self, text: str) -> None:
         self.send_query(text)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Cleanly terminate background workers."""
-        if hasattr(self, "brain") and hasattr(self.brain, "agent"):
+        if hasattr(self.brain, "agent"):
             self.brain.agent.remove_log_listener(self._on_agent_log)
         if hasattr(self, "voice_listener") and self.voice_listener:
             self.voice_listener.stop()
         if hasattr(self, "player") and self.player:
             self.player.stop()
 
-    def send_query(self, query: str):
+    def send_query(self, query: str) -> None:
         """Submit a user prompt (voice or text) to the brain."""
         if not query or not query.strip():
             return
@@ -355,19 +359,45 @@ class AssistantBridge(QObject):
         self._active_worker = worker
         worker.start()
 
-    def _on_action_performed(self, action: dict):
+    def _on_action_performed(self, action: Dict[str, Any]) -> None:
         tool_name = action.get("tool", "unknown")
         args = action.get("args", {})
+        res = action.get("result", {})
         self.state_changed.emit("act")
         self.log_emitted.emit(f"[ACT] Executed: {tool_name}({args})", "gold")
 
-    def _on_response_ready(self, result: dict):
+        # Emit rich cards to ResultPanel if tool returned structured items
+        if isinstance(res, dict):
+            if "videos" in res and res.get("videos"):
+                items = [
+                    {
+                        "title": v.get("title", ""),
+                        "url": v.get("url", ""),
+                        "snippet": f"{v.get('channel', '')} • {v.get('views', '')} views"
+                    }
+                    for v in res.get("videos", [])
+                ]
+                self.reach_result_ready.emit({
+                    "channel": "youtube",
+                    "backend": res.get("category", "trending"),
+                    "success": res.get("success", True),
+                    "summary": res.get("summary") or res.get("message") or "YouTube Trending",
+                    "items": items
+                })
+            elif "reach_result" in res and isinstance(res["reach_result"], dict):
+                self.reach_result_ready.emit(res["reach_result"])
+
+    def _on_response_ready(self, result: Dict[str, Any]) -> None:
         response_text = result.get("response", "")
         audio_path = result.get("audio_path")
         source = result.get("source", "brain")
 
         self.log_emitted.emit(f"[STAR // {source}] {response_text}", "ok")
         self.response_ready.emit(response_text)
+
+        # Forward reach results if provided
+        if "reach_result" in result and isinstance(result["reach_result"], dict):
+            self.reach_result_ready.emit(result["reach_result"])
 
         # Play spoken audio if available
         if audio_path and os.path.exists(audio_path):
@@ -381,7 +411,7 @@ class AssistantBridge(QObject):
             seq = self._query_seq
             QTimer.singleShot(800, lambda: self._finish_silent_response(seq))
 
-    def _finish_silent_response(self, seq: int):
+    def _finish_silent_response(self, seq: int) -> None:
         if seq != self._query_seq:
             return  # a newer query took over — it manages the mic itself
         self.state_changed.emit("idle")
