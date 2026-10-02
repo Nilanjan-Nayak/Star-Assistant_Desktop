@@ -37,7 +37,7 @@ async def precache_all():
         spoken = clean_for_speech(ans) or ans
         has_bng = any('\u0980' <= ch <= '\u09ff' for ch in spoken)
         voice = engine.voice if has_bng else "en-IN-NeerjaExpressiveNeural"
-        key = f"{spoken}_{voice}_{engine.rate}_{engine.pitch}".encode("utf-8")
+        key = f"{spoken}_{voice}_{engine.rate}_{engine.pitch}_{engine.volume}".encode("utf-8")
         h = hashlib.md5(key).hexdigest()
         out = engine.cache_dir / f"tts_{h}.mp3"
 
@@ -45,7 +45,7 @@ async def precache_all():
             continue
 
         try:
-            comm = edge_tts.Communicate(text=spoken, voice=voice, rate=engine.rate, pitch=engine.pitch)
+            comm = edge_tts.Communicate(text=spoken, voice=voice, rate=engine.rate, pitch=engine.pitch, volume=engine.volume)
             await comm.save(str(out))
             count += 1
             if count % 10 == 0:

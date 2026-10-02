@@ -148,7 +148,8 @@ BANGLISH_CONCEPTS: Dict[str, str] = {
     "dim": "কমিয়ে", "komao": "কমিয়ে", "komie": "কমিয়ে",
     "komano": "কমিয়ে", "komiye": "কমিয়ে", "reduce": "কমিয়ে",
     "barao": "বাড়িয়ে", "barie": "বাড়িয়ে", "barano": "বাড়িয়ে",
-    "bariye": "বাড়িয়ে", "increase": "বাড়িয়ে",
+    "bariye": "বাড়িয়ে", "badhao": "বাড়িয়ে", "badhie": "বাড়িয়ে",
+    "badhiye": "বাড়িয়ে", "barhao": "বাড়িয়ে", "increase": "বাড়িয়ে",
     "de": "দাও", "dao": "দাও", "give": "দাও", "bolo": "বলো",
     "bol": "বল", "tell": "বলো", "show": "দেখাও", "dekhao": "দেখাও",
     "koro": "করো", "do": "করো", "help": "সাহায্য", "sahajjo": "সাহায্য",
@@ -331,6 +332,7 @@ INTENT_PATTERNS: Dict[str, List[str]] = {
     "volume_up": [
         "ভলিউম বাড়াও", "volume barao", "sound barie", "আওয়াজ বাড়াও",
         "volume up", "শব্দ বাড়াও", "আওয়াজ বাড়িয়ে", "volume bariye",
+        "volume badhao", "sound badhao", "awaj badhao", "sound barao",
     ],
     "volume_down": [
         "ভলিউম কমাও", "volume komao", "sound komie", "আওয়াজ কমাও",

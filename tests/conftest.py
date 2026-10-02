@@ -28,3 +28,35 @@ def fake_world() -> WorldModel:
         monitor=MonitorInfo(index=1, x=0, y=0, width=64, height=48, is_primary=True, name="test"),
     )
     return WorldModel(capture, ScreenDiffer())
+
+import inspect
+import asyncio
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_pyfunc_call(pyfuncitem):
+    if inspect.iscoroutinefunction(pyfuncitem.obj):
+        testfunction = pyfuncitem.obj
+        funcargs = {
+            arg: pyfuncitem.funcargs[arg]
+            for arg in pyfuncitem._fixtureinfo.argnames
+            if arg in pyfuncitem.funcargs
+        }
+
+        async def runner():
+            async_gens = []
+            try:
+                for k, v in list(funcargs.items()):
+                    if inspect.isasyncgen(v):
+                        async_gens.append(v)
+                        funcargs[k] = await v.__anext__()
+                await testfunction(**funcargs)
+            finally:
+                for gen in reversed(async_gens):
+                    try:
+                        await gen.__anext__()
+                    except (StopAsyncIteration, GeneratorExit, Exception):
+                        pass
+
+        asyncio.run(runner())
+        return True
+    return None

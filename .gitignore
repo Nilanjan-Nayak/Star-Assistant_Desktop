@@ -12,6 +12,8 @@ build/
 venv/
 .env
 .env.*
+# the template is documentation (it holds no secret values) — keep it tracked
+!.env.example
 
 # Tools
 .mypy_cache/
@@ -25,10 +27,18 @@ coverage.xml
 .nox/
 
 # Agent runtime artefacts
+# Phase 7: background-workspace sessions are runtime state — never commit a session jail
+data/workspace/
 audit.jsonl
 episodes.jsonl
 star_memory.db
 star_memory.db-*
+# Phase 9: safe-learning candidate ledger + feedback log are runtime state
+data/learning/
+data/patterns.jsonl
+data/orchestrator/
+candidates.jsonl
+feedback.jsonl
 *.png
 !docs/**
 Backend/cache/

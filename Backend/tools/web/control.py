@@ -23,13 +23,16 @@ import urllib.parse
 import webbrowser
 from typing import Any, Dict, Optional
 
-import pyautogui
-pyautogui.FAILSAFE = False
+try:
+    import pyautogui
+    pyautogui.FAILSAFE = False
+except Exception:
+    pyautogui = None
 
 
 from ..registry import register_tool
 
-user32 = ctypes.windll.user32
+user32 = getattr(getattr(ctypes, "windll", None), "user32", None)
 VK_MENU = 0x12
 SW_RESTORE = 9
 
@@ -80,7 +83,7 @@ def _focus_browser() -> bool:
 def _get_clipboard_text() -> str:
     """Safely get text from Windows clipboard via Win32 ctypes."""
     try:
-        k32 = ctypes.windll.kernel32
+        k32 = getattr(getattr(ctypes, "windll", None), "kernel32", None)
         if user32.OpenClipboard(0):
             try:
                 CF_UNICODETEXT = 13

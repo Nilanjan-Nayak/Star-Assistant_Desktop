@@ -197,6 +197,10 @@ class SpeechPlayer(QObject):
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
+            try:
+                pygame.mixer.music.set_volume(1.0)
+            except Exception:
+                pass
             pygame.mixer.music.load(file_path)
             self._is_playing = True
             self.started.emit()

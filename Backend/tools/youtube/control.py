@@ -18,8 +18,11 @@ from ctypes import wintypes
 import time
 from typing import Any, Dict, Optional
 
-import pyautogui
-pyautogui.FAILSAFE = False
+try:
+    import pyautogui
+    pyautogui.FAILSAFE = False
+except Exception:
+    pyautogui = None
 
 
 from ..registry import register_tool
@@ -28,7 +31,7 @@ from ..registry import register_tool
 #  Win32 Native Window & Media Keys
 # ─────────────────────────────────────────────────────────────────────────────
 
-user32 = ctypes.windll.user32
+user32 = getattr(getattr(ctypes, "windll", None), "user32", None)
 
 # Virtual key codes
 VK_MENU = 0x12                # Alt key
@@ -418,7 +421,7 @@ def youtube_adjust_player_volume(delta: int = 10) -> Dict[str, Any]:
 def _get_clipboard_text() -> str:
     """Safely get UTF-16 text from Windows clipboard via Win32 ctypes."""
     try:
-        k32 = ctypes.windll.kernel32
+        k32 = getattr(getattr(ctypes, "windll", None), "kernel32", None)
         if user32.OpenClipboard(0):
             try:
                 CF_UNICODETEXT = 13

@@ -98,6 +98,7 @@ def extract_clean_search_query(text: str) -> Tuple[str, str]:
 
         # English prefixes
         r"^(?:please\s+)?(?:can\s+you\s+)?(?:search\s+(?:for|about|and\s+find(?:\s+out)?(?:\s+about)?)|look\s+up|find\s+out\s+about|google)\s+",
+        r"^(?:who\s+is|who\s+was|what\s+is|what\s+was|where\s+is|tell\s+me\s+about|janate\s+chai|jante\s+chai|bolte\s+paro)\s+",
 
         # Bare search words
         r"^(?:search\s+kore\s+(?:bolo|dao|dekhao)|search\s+koro|search\s+kor|search\s+korun|search|সার্চ\s+করে\s+(?:বলো|দাও|দেখাও)|সার্চ\s+করো|সার্চ\s+কর|সার্চ\s+করুন|সার্চ)\s+",
@@ -116,11 +117,19 @@ def extract_clean_search_query(text: str) -> Tuple[str, str]:
     for pat in suffixes:
         clean = re.sub(pat, "", clean, flags=re.IGNORECASE).strip()
 
-    # 7. Residual leading noise words
-    clean = re.sub(r"^(?:for|about|ekta|ekti|kono|akta|akti|একটা|একটি|কোনো)\s+", "", clean, flags=re.IGNORECASE).strip()
+    # 7. Residual leading noise words (loop to handle multiple like "akta valo")
+    while True:
+        prev = clean
+        clean = re.sub(r"^(?:for|about|ekta|ekti|kono|akta|akti|একটা|একটি|কোনো|valo|bhalo|ভালো|ভাল|the|a|an)\s+", "", clean, flags=re.IGNORECASE).strip()
+        if clean == prev:
+            break
 
-    # 8. Trailing objective markers
-    clean = re.sub(r"\s+(?:ke|কে|ta|টা)$", "", clean, flags=re.IGNORECASE).strip()
+    # 8. Trailing objective and question markers
+    clean = re.sub(r"\s+(?:ke|কে|ki|কী|কি|kothay|কোথায়|কোথায়|ta|টা)[\?]?$", "", clean, flags=re.IGNORECASE).strip()
+
+    # 9. Common phonetic/transliteration normalization for high-frequency queries
+    clean = re.sub(r"\bshingh\b", "singh", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\bshing\b", "singh", clean, flags=re.IGNORECASE)
 
     # Strip surrounding quotes and punctuation
     clean = clean.strip(" '\"`.,!?:;-")
@@ -386,3 +395,39 @@ def search_web(query: str, target: str = "google", play: bool = False) -> Dict[s
         return yt_search(query=eff_query, target="youtube", play=play)
 
     return web_search(query=eff_query, engine=eff_target, open_browser=True)
+
+
+@register_tool(
+    name="github_search_repos",
+    description="Search GitHub for open-source repositories, agent frameworks, and coding tools by topic or keyword."
+)
+def github_search_repos(query: str, sort: str = "stars", limit: int = 5) -> Dict[str, Any]:
+    """Search GitHub public API for top open-source repositories matching the query."""
+    clean_q = re.sub(r"\b(?:github|repos?|repositories|reposetory|খুঁজে|দাও|search|খোঁজো)\b", "", query, flags=re.IGNORECASE).strip()
+    target_q = clean_q or query.strip()
+    encoded = urllib.parse.quote_plus(target_q)
+    url = f"https://api.github.com/search/repositories?q={encoded}&sort={sort}&order=desc&per_page={max(1, min(limit, 10))}"
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "StarAssistant-2.0",
+        "Accept": "application/vnd.github.v3+json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            items = []
+            for item in data.get("items", [])[:limit]:
+                items.append({
+                    "name": item.get("full_name"),
+                    "stars": item.get("stargazers_count", 0),
+                    "description": item.get("description") or "",
+                    "url": item.get("html_url"),
+                    "language": item.get("language") or "Python",
+                })
+            return {
+                "success": True,
+                "query": target_q,
+                "total_count": data.get("total_count", 0),
+                "repositories": items,
+            }
+    except Exception as e:
+        return {"success": False, "query": target_q, "error": str(e), "repositories": []}

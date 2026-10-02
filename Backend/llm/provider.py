@@ -45,17 +45,7 @@ def _conversation_pipeline(user_text: str, memory_context: str = "",
             "source": routed.get("source", "command_router"),
         }
 
-    # 2. Exact dataset match (pure chat)
-    exact = companion.find_match(user_text, min_confidence=0.995)
-    if exact:
-        return exact
-
-    # 3. High-confidence fuzzy dataset match (chat only — no side effects)
-    fuzzy = companion.find_match(user_text, min_confidence=0.84)
-    if fuzzy:
-        return fuzzy
-
-    # 4. Legacy offline intent patterns
+    # 2. Legacy offline intent patterns (offline fallback for actions)
     try:
         intent_match = OfflineIntentEngine().match_intent(user_text)
     except Exception:
@@ -63,7 +53,17 @@ def _conversation_pipeline(user_text: str, memory_context: str = "",
     if intent_match:
         return intent_match
 
-    # 5. LLM (online providers)
+    # 3. Exact dataset match (pure chat)
+    exact = companion.find_match(user_text, min_confidence=0.995)
+    if exact:
+        return exact
+
+    # 4. High-confidence fuzzy dataset match (chat only — no side effects)
+    fuzzy = companion.find_match(user_text, min_confidence=0.84)
+    if fuzzy:
+        return fuzzy
+
+    # 5. LLM (online providers) — Ollama / Gemini / cloud LLM with full reasoning & tool schema
     if llm_callable is not None:
         try:
             llm_result = llm_callable(user_text, memory_context)
@@ -72,11 +72,10 @@ def _conversation_pipeline(user_text: str, memory_context: str = "",
         if llm_result:
             return llm_result
 
-    # 6. Friendly fallback
+    # 6. Friendly, warm, human-like companion fallback (no robotic capability menu)
     return {
-        "response": ("দুঃখিত বন্ধু, কথাটা আমি ঠিকমতো বুঝতে পারিনি। একটু সহজ করে "
-                     "আবার বলবে? ভলিউম, ব্রাইটনেস, অ্যাপ খোলা, গান চালানো বা "
-                     "স্ক্রিনশটের মতো কাজ বললে আমি সাথে সাথেই করে দেবো!"),
+        "response": ("আমি তোমার কথা মন দিয়ে শুনলাম বন্ধু। তুমি ঠিক কী জানতে চাইছো বা "
+                     "কী করাতে চাইছো আমাকে আরেকটু বুঝিয়ে বলবে? আমি সাথে সাথেই সাহায্য করছি!"),
         "actions": [],
         "source": "fallback",
     }
@@ -324,7 +323,9 @@ class OfflineIntentEngine(BaseLLMProvider):
         if any(w in text for w in [
             "screen dakho", "screen dekho", "see screen", "look at screen", "read screen", "ocr",
             "স্ক্রিন দেখো", "পর্দা দেখো", "পর্দায় কি আছে", "পর্দায় কি আছে", "স্ক্রিনে কি আছে", "স্ক্রিনে কী আছে",
-            "পর্দা পড়ো", "স্ক্রিন পড়ো", "স্ক্রিনে কি দেখতে পাচ্ছ"
+            "পর্দা পড়ো", "স্ক্রিন পড়ো", "স্ক্রিনে কি দেখতে পাচ্ছ", "schreen short nia", "screenshot nia",
+            "schreen short", "screenshot nie", "screenshot pore", "স্ক্রিনশট নিয়ে", "স্ক্রিনশট পড়ে",
+            "guchia bolo", "guchiye bolo", "guchhiye", "বুঝিয়ে বলো", "কি হয়েছে", "ki hoiache", "ki hocche"
         ]):
             res = execute_tool("see_screen", query="*")
             executed_actions.append({"tool": "see_screen", "args": {"query": "*"}, "result": res})
@@ -336,9 +337,26 @@ class OfflineIntentEngine(BaseLLMProvider):
                         "actions": executed_actions,
                         "source": "screen_vision"
                     }
+                
+                # If Gemini is enabled, use it to intelligently explain the screenshot text
+                if USE_GEMINI and GEMINI_API_KEY.strip():
+                    try:
+                        gemini = GoogleGeminiProvider()
+                        prompt = f"আমি আমার স্ক্রিনশট নিয়ে স্ক্রিন রিডার দিয়ে এই টেক্সট পেয়েছি:\n\n{found_text[:1000]}\n\nতুমি এই টেক্সটগুলো পড়ে আমাকে খুব সুন্দর ও গোছানো বাংলায় বুঝিয়ে বলো স্ক্রিনে কী আছে বা কী হচ্ছে। ১-৩ লাইনের মধ্যে বলবে।"
+                        gemini_res = gemini._gemini_answer(prompt)
+                        if gemini_res and gemini_res.get("response"):
+                            return {
+                                "response": gemini_res["response"],
+                                "actions": executed_actions,
+                                "source": "screen_vision (LLM explained)"
+                            }
+                    except Exception:
+                        pass
+                
+                # Fallback to pure text preview
                 preview = found_text[:200]
                 return {
-                    "response": f"আমি তোমার স্ক্রিন পড়েছি বন্ধু! পর্দায় যা দেখতে পেয়েছি: {preview}",
+                    "response": f"আমি তোমার স্ক্রিন পড়েছি বন্ধু! পর্দায় যা দেখতে পেয়েছি: {preview}...",
                     "actions": executed_actions,
                     "source": "screen_vision"
                 }
@@ -408,8 +426,31 @@ class OfflineIntentEngine(BaseLLMProvider):
             num_match = re.search(r"(\d+)\s*%", text) or re.search(r"(\d+)", text)
             number = int(num_match.group(1)) if num_match else None
 
+            # Sound decreased complaint or request to fix/restore volume
+            is_sound_issue = any(p in text for p in [
+                "kome geche", "kome gache", "kome gechhe", "kome gachhe", "kom hoye geche", "kom hoye gache",
+                "kom lagche", "kome ache", "কমে গেছে", "কমে গ্যাছে", "কমে গিয়েছে", "শব্দ কমে", "আওয়াজ কমে"
+            ]) or (
+                any(w in text for w in ["thik", "thik koro", "problem", "khub kom", "onek kom", "onak tai kom", "onektai kom"])
+                and not any(w in text for w in ["komao", "komaw", "komie", "komiye", "kamie", "কমাও", "কমিয়ে"])
+            )
+            if any(w in text for w in ["komao", "komaw", "komie", "komiye", "kamie", "কমাও", "কমিয়ে"]) and not any(w in text for w in ["kome geche", "kome gache", "thik", "parbe"]):
+                is_sound_issue = False
+
+            if is_sound_issue:
+                from ..agent_bridge import get_agent_bridge
+                from ..tools.system.volume import get_volume
+                pref_v = get_agent_bridge().preferred_int("volume.level", 80)
+                curr = get_volume()
+                target = max(pref_v, curr + 25)
+                target = min(100, max(75, target))
+                res = execute_tool("set_volume", level=target)
+                executed_actions.append({"tool": "set_volume", "args": {"level": target}, "result": res})
+                reply = f"আমি সাউন্ড পুরোপুরি ঠিক করে দিয়েছি বন্ধু! ভলিউম বাড়িয়ে {target}% এ সেট করে দিলাম, এখন আগের মতো স্পষ্ট ও সুন্দর শুনতে পাবে।"
+                return {"response": reply, "actions": executed_actions, "source": "offline_intent"}
+
             # Up / Increase
-            if any(w in text for w in ["up", "barao", "barie", "increase", "high", "উঁচু", "বাড়িয়ে", "বাড়াও", "বাড়িয়ে দাও"]):
+            if any(w in text for w in ["up", "barao", "barie", "bariye", "badhao", "badha", "badhie", "badhiye", "badhaw", "barhao", "baraw", "jor", "jore", "increase", "raise", "high", "উঁচু", "বাড়িয়ে", "বাড়াও", "বাড়িয়ে দাও", "জোরে"]):
                 delta = number if number is not None else 15
                 res = execute_tool("adjust_volume", delta=delta)
                 new_v = res.get("result", {}).get("current_volume", 70)
@@ -742,10 +783,9 @@ class OfflineIntentEngine(BaseLLMProvider):
                 "source": "offline_intent"
             }
 
-        # Greetings & Hello
-        if any(w in text for w in [
-            "hello", "hi", "hey", "হ্যালো", "নমস্কার", "shono", "শোনো"
-        ]):
+        # Greetings & Hello (match whole tokens so 'hi' does not match inside 'shingh')
+        words = set(text.split())
+        if any(w in words for w in ["hello", "hi", "hey", "হ্যালো", "নমস্কার", "shono", "শোনো"]):
             return {
                 "response": "হ্যালো নীলাঞ্জন! কেমন আছো বলো? আজ তোমার জন্য কী কাজ বা সাহায্য করতে পারি?",
                 "actions": [],

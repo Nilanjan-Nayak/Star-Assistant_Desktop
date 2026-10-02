@@ -92,8 +92,8 @@ def test_youtube_named_search():
 
 def test_google_search():
     r = route_command("google e kobita search koro")
-    assert r and r["actions"][0]["tool"] == "search_web"
-    assert r["actions"][0]["args"]["target"] == "google"
+    assert r and r["actions"][0]["tool"] == "web_search"
+    assert r["actions"][0]["args"].get("engine", r["actions"][0]["args"].get("target")) == "google"
     assert r["actions"][0]["args"]["query"] == "kobita"
 
 

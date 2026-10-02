@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+pytest.importorskip("hypothesis")
 from hypothesis import given, settings, strategies as st
 
 from agent.geometry.bbox import BoundingBox

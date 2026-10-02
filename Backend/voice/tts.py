@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from ..config import AUDIO_CACHE_DIR, TTS_VOICE, TTS_RATE, TTS_PITCH
+from ..config import AUDIO_CACHE_DIR, TTS_VOICE, TTS_RATE, TTS_PITCH, TTS_VOLUME
 
 
 def clean_for_speech(text: str) -> str:
@@ -53,6 +53,7 @@ class VoiceEngine:
         self.voice = voice
         self.rate = TTS_RATE
         self.pitch = TTS_PITCH
+        self.volume = TTS_VOLUME
         self.cache_dir = Path(AUDIO_CACHE_DIR)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # Remember which voice last worked so retries start there
@@ -94,7 +95,7 @@ class VoiceEngine:
         return self._offline_fallback(text, self._cache_path(spoken_text, chain[0]))
 
     def _cache_path(self, spoken_text: str, voice: str) -> Path:
-        key = f"{spoken_text}_{voice}_{self.rate}_{self.pitch}".encode("utf-8")
+        key = f"{spoken_text}_{voice}_{self.rate}_{self.pitch}_{self.volume}".encode("utf-8")
         return self.cache_dir / f"tts_{hashlib.md5(key).hexdigest()}.mp3"
 
     def _remember_good(self, voice: str, has_bengali: bool) -> None:
@@ -113,7 +114,8 @@ class VoiceEngine:
                     text=spoken_text,
                     voice=voice,
                     rate=self.rate,
-                    pitch=self.pitch
+                    pitch=self.pitch,
+                    volume=self.volume,
                 )
                 await communicate.save(str(out_file))
 
