@@ -1,189 +1,196 @@
-# Computer Control Agent v6.0
+<div align="center">
 
-Ultra type-safe, layered desktop-automation agent. The public surface is one
-facade; everything underneath is independently testable, mypy-strict, and
-swappable via `Protocol`s.
+# ✨ STAR ASSISTANT // DESKTOP
+### Futuristic Bengali + English AI desktop companion with a type-safe automation core
 
+<p>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.12%2B-7dd3fc?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="Status" src="https://img.shields.io/badge/Status-Beta-22d3ee?style=for-the-badge">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-a78bfa?style=for-the-badge">
+</p>
+
+<p>
+  <strong>Voice-first desktop assistant + modular automation agent</strong><br/>
+  Responsive HUD • OCR vision • memory-aware planning • safety-governed actions
+</p>
+
+</div>
+
+---
+
+## 🌌 Why this project feels different
+
+Star Assistant blends a cinematic desktop experience with practical automation:
+
+- **3D-style reactive HUD UI** built with **PySide6** (`Frontend/`)
+- **Voice loop** (listen → reason → respond) with Bengali/English speech handling (`Backend/`)
+- **Type-safe automation core** with layered architecture, strict typing, and safety invariants (`agent/`)
+- **Memory-aware behavior** so repeated tasks can become personalized over time
+
+---
+
+## 🧩 Experience & architecture at a glance
+
+<table>
+  <tr>
+    <td valign="top" width="33%">
+      <h3>🪐 Frontend (Face)</h3>
+      <ul>
+        <li>PySide6 HUD modes and animation system</li>
+        <li>Reactor-style visual states (hear/think/act/speak)</li>
+        <li>Main entry: <code>Frontend/main.py</code></li>
+      </ul>
+    </td>
+    <td valign="top" width="33%">
+      <h3>🧠 Backend (Brain)</h3>
+      <ul>
+        <li>Bridge between UI, voice, tools, and reasoning</li>
+        <li>LLM provider routing (local-first, optional Gemini)</li>
+        <li>Tool registry for apps/system/web/media workflows</li>
+      </ul>
+    </td>
+    <td valign="top" width="33%">
+      <h3>🛡️ Agent Core (Engine)</h3>
+      <ul>
+        <li>Safety governor + capability checks</li>
+        <li>Skill system (volume, brightness, launch, OCR, screenshot, YouTube)</li>
+        <li>CLI + memory + dry-run automation pipeline</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
+---
+
+## 🚀 Quick start
+
+### 1) Run the desktop assistant (HUD + voice)
+
+```bash
+pip install -r requirements.txt
+python run.py
 ```
+
+Windows helper:
+
+```bat
+run.bat
+```
+
+---
+
+### 2) Run the type-safe automation agent (CLI)
+
+```bash
 pip install -e ".[dev]"
 pytest
 agent --describe --dry-run
 agent --dry-run "set the volume"
 ```
 
-Python **3.12+**. Optional extras (`gui`, `ocr`, `web`, `llm`, `win`/`mac`/`linux`)
-pull in the real backends; the core package imports cleanly without them.
+> Python requirement: **3.12+**
 
 ---
 
-## Why v6 (vs the v5 sketch)
+## ⚙️ Optional capabilities
 
-| Area | v5 | **v6** |
-|---|---|---|
-| **ActionSpec** | One fat model, optional fields, runtime validator | **Discriminated union** (`ClickAction \| TypeAction \| …`). Invalid combinations are type errors. Exhaustive `match` + `assert_never`. |
-| **Screenshots** | `Any` / raw PIL | **`Raster`** — frozen RGB buffer, sha256 content-addressed, crop/diff without Pillow. PIL is an adapter at the capture boundary. |
-| **Coordinates** | Non-negative only | Signed int16-range — multi-monitor origins can be negative. Half-open bounding boxes. |
-| **IDs** | `NewType` constructors | Same + **`parse_*` validators** (`act_<12 hex>`, sha256, skill-name grammar). |
-| **Result** | `map_ok` with `# type: ignore` | PEP 695 `Ok[T]` / `Err[E]` with `TypeGuard`, `and_then`, `collect`. |
-| **Clock / retry / cancel** | Clock only | **`RetryPolicy`** (jittered backoff) + **`CancellationToken`** (deadline or explicit cancel). |
-| **Circuit breaker** | Open/closed | Proper **half-open single trial**. |
-| **Safety invariants** | `check()` mutated counters | **`check` is pure, `commit` after all pass** — a later failure no longer burns budget. |
-| **Capability / HITL** | Token + escalation callback | `mint_grant()`, `Approver` protocol (`AutoApprove` / `AutoDeny` / `ConsoleApprover`). |
-| **Skills → motor** | Skills called `motor.execute` and **bypassed the governor** | **`SkillContext.act()`** always `governor.check` → execute → audit. |
-| **Launch skill** | `os.startfile` / `Popen` of anything | Blocklist + no shell metacharacters + `shutil.which` on Linux. |
-| **FSM** | Dict of transitions | Frozen table, completeness assertion at import, `can_transition`. |
-| **Events** | 4 types | 8-member **discriminated union**, typed `subscribe` returns unsubscribe. |
-| **Observability** | JSON logs + metrics | Correlation-id `ContextVar`, nested spans, health registry, action journal. |
-| **Tests** | 3 files | Geometry, motor, governor, result, IDs, FSM, breaker, cache, skills, planner, events, react, perception, retry, facade, **Hypothesis**. |
-| **Facade** | Constructor only | Async context manager, injectable `WorldModel`, `--health` / `--version` CLI. |
+### OCR / screen reading
 
----
-
-## Package layout
-
-```
-agent/
-├── core/            L0  IDs, enums, Result, clock, events, metrics, breaker, retry, cancel
-├── geometry/        L1  PixelCoord, LogicalCoord, BoundingBox, Raster, MonitorInfo
-├── perception/      L2  ScreenElement, PerceptionQuery, cascade of strategies
-├── world/           L3  ScreenSnapshot, capture, differ, WorldModel, FakeCapture
-├── motor/           L4  ActionSpec union, MotorBackend, controller
-├── safety/          L5  Governor + composable invariants + capability tokens
-├── skills/          L6  Skill[TIn], registry, builtins (volume/brightness/screenshot/launch/youtube)
-├── planning/        L7  FSM, StubPlanner / LLMPlanner, ReActAgent, episodic memory, journal
-├── facade.py            ComputerControlAgent
-└── cli.py               `agent` console script
-```
-
-Dependencies only flow **down**. `core` never imports another layer.
-
----
-
-## Type-safety notes
-
-- **`NewType` IDs** — `ActionId` is not a `StepId`. Parsers enforce the prefix.
-- **Discriminated `ActionSpec`** — `click(10, 10)` cannot carry `text=`. JSON round-trips through `parse_action`.
-- **`Literal` event `kind`** — mypy narrows `Event` on `.kind`.
-- **`Protocol` seams** — `Clock`, `MotorBackend`, `CaptureBackend`, `PerceptionStrategy`, `Planner`, `Approver`, `Invariant`, `SkillContext`.
-- **`Raster`** replaces `Any` screenshots; tests never import Pillow.
-- **Half-open boxes** — `contains` is `[x, x+width) × [y, y+height)`, so the far edge is not inside.
-- **PEP 561** — `agent/py.typed` is shipped. `mypy --strict` is the default in `pyproject.toml`.
-
----
-
-## Safety governor
-
-Six composable invariants, each a pure `check` plus an optional `commit`:
-
-1. **Total budget** — episode action cap.
-2. **Rate limit** — trailing 60 s.
-3. **Wall clock** — episode elapsed time.
-4. **Forbidden regions** — pointer actions cannot land in configured boxes.
-5. **Keyword blocklist** — typed / hotkey payloads.
-6. **Capability token** — required at `SafetyLevel.PARANOID`.
-
-`GovernorConfig.for_level(SafetyLevel.PARANOID)` tightens every numeric cap and turns capability tokens on.
-
-Dry-run uses `NullBackend` (records specs, no OS calls) but **still runs the governor**.
-
----
-
-## Quick API
-
-```python
-import asyncio
-from agent import ComputerControlAgent
-from agent.safety.config import GovernorConfig
-from agent.core.enums import SafetyLevel
-
-async def main() -> None:
-    async with ComputerControlAgent(
-        governor_config=GovernorConfig.for_level(SafetyLevel.NORMAL),
-        dry_run=True,
-    ) as agent:
-        episode = await agent.run("set the volume")
-        print(episode.final_state, episode.step_count)
-        print(await agent.quick("volume", level=40))
-
-asyncio.run(main())
-```
-
-Factories for raw motor specs live in `agent.motor.spec`:
-
-```python
-from agent.motor import click, type_text, hotkey, wait
-spec = click(100, 200)
-```
-
----
-
-## Long-term memory (the brain that grows)
-
-This does **not** make clicks or OCR more accurate. Those are perception/motor.
-It **does** make planning personal: after `set volume to 40`, a later
-`set the volume` uses **40** instead of the hardcoded 70.
-
-- Local-first: `star_memory.db` (SQLite + hashing-trick embeddings, no extra deps)
-- Optional real vectors: `pip install -e ".[memory]"` (`sentence-transformers`)
-- Backup: `FolderSync` (copy to a folder / rclone / Drive desktop). `DriveSync` is a typed seam waiting for API credentials.
-
-```
-agent --remember "volume at night is 30" --remember-kind preference \
-      --remember-key volume.level --remember-value 30
-agent --recall volume
-agent --dry-run "set the volume"     # planner now uses 30
-agent --backup ./drive-folder
-```
-
-```python
-agent.remember("I like lo-fi at night", kind=MemoryKind.PREFERENCE)
-print(agent.memory_context("play something"))
-```
-
----
-
-## Seeing the screen (OCR)
-
-Read-only: capture pixels, then read text. Does **not** move the mouse.
-
-```
-agent --see                         # OCR everything, save see.png
-agent --see --query Search          # only words containing "Search"
-agent --dry-run "screen dakho"      # planner → see skill
-agent --skill see --params '{"query":"*"}'
-```
-
-Backends (first one that works):
-
-1. **Capture** — `mss` → Pillow `ImageGrab` (Windows/macOS) → `gnome-screenshot` / `grim` / `scrot`
-2. **OCR** — Tesseract (`eng`+`ben` if trained data is installed) → EasyOCR → empty (still saves the PNG)
-
-```
+```bash
 # Debian/Ubuntu
 sudo apt install tesseract-ocr tesseract-ocr-ben
 pip install -e ".[gui,ocr]"
 ```
 
+### Memory embeddings (optional)
+
+```bash
+pip install -e ".[memory]"
+```
+
 ---
 
-## CLI
+## 🧪 Useful CLI examples
 
-```
-agent --describe
+```bash
 agent --health
 agent --skill volume --params '{"level":40}' --dry-run
-agent --dry-run --safety paranoid "delete something"   # blocked
-agent --metrics "set the volume"
+agent --see --query Search
+agent --remember "volume at night is 30" --remember-kind preference --remember-key volume.level --remember-value 30
+agent --recall volume
+agent --backup ./drive-folder
 ```
 
 ---
 
-## Testing without a GUI
+## 🔧 Configuration notes
 
-`agent.world.fake.FakeCapture` + `solid(w, h, rgb)` mint deterministic screens.
-`FrozenClock` drives TTLs, breakers and rate limits. `NullBackend` records
-actions. The pytest suite uses only these — no display required.
+`Backend/config.py` supports environment-based configuration.
 
+### LLM routing
+- `STAR_LOCAL_LLM_URL` (default `http://localhost:11434/v1`)
+- `STAR_LOCAL_LLM_MODEL` (default `star-local:latest`)
+- `STAR_USE_LOCAL_LLM` (default `true`)
+- `GEMINI_API_KEY`
+- `STAR_USE_GEMINI` (default `false`)
+- `STAR_GEMINI_MODEL` (default `gemini-2.5-flash`)
+
+### Voice output
+- `STAR_TTS_VOICE`
+- `STAR_TTS_RATE`
+- `STAR_TTS_PITCH`
+
+### Optional integrations
+- `YOUTUBE_API_KEY` (used by YouTube analytics tool paths)
+
+---
+
+## 🗂️ Project structure
+
+```text
+.
+├── run.py / run.bat          # Desktop launcher
+├── Frontend/                 # PySide6 visual layer (HUD)
+├── Backend/                  # Brain, bridge, voice, tools, LLM providers
+├── agent/                    # v6 automation core (typed layered architecture)
+├── tests/                    # Core tests for agent package
+├── requirements.txt          # Full desktop stack dependencies
+└── pyproject.toml            # Agent package metadata, extras, lint/test config
 ```
-pytest -q
-```
+
+---
+
+## 🛣️ Roadmap
+
+- [ ] Expand desktop presence modes and UI polish in the Frontend layer
+- [ ] Continue wiring richer tool/mission flows through the bridge
+- [ ] Grow skill coverage while preserving safety-governed execution
+- [ ] Keep strict typing, testability, and dry-run reliability at the core
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome via pull requests and issues.
+
+1. Fork the repository
+2. Create a feature branch
+3. Run relevant checks (for agent core: `pytest`)
+4. Open a PR with a clear description
+
+---
+
+## 📜 License
+
+This repository is licensed under the **MIT License**.
+See [`LICENSE`](./LICENSE).
+
+---
+
+## 📡 Support / contact
+
+For bugs, ideas, or feature requests, please open an issue in this repository.
+
+<div align="center">
+  <sub>Built for a premium desktop-assistant experience with practical automation depth.</sub>
+</div>
