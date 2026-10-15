@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="starShowcase">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Star Assistant — cinematic orbital showcase for a voice-first Bengali + English desktop companion.">
+  <title>Star Assistant — Cinematic Orbital Showcase</title>
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2304060f'/%3E%3Cpath d='M16 6l2.4 7.6L26 16l-7.6 2.4L16 26l-2.4-7.6L6 16l7.6-2.4z' fill='%2322d3ee'/%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Hind+Siliguri:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+/* =========================================================================
+   STAR ASSISTANT — Cinematic Orbital Showcase
+   Professional dark palette · Sora / Manrope / JetBrains Mono typography
+   ========================================================================= */
+
+/* ---------- 1. Design tokens ---------- */
+:root {
+  /* Surfaces */
+  --bg:        #04060f;
+  --bg-2:      #070b1a;
+  --bg-3:      #0b1024;
+  --surface:   rgba(148, 178, 255, 0.05);
+  --surface-2: rgba(148, 178, 255, 0.08);
+  --line:      rgba(148, 178, 255, 0.14);
+  --line-soft: rgba(148, 178, 255, 0.08);
+
+  /* Ink */
+  --text:    #e9eefc;
+  --muted:   #9fb0d4;
+  --faint:   #6d7ea6;
+
+  /* Accents (cool, cohesive family) */
+  --cyan:    #22d3ee;
+  --sky:     #7dd3fc;
+  --violet:  #a78bfa;
+  --indigo:  #818cf8;
+  --mint:    #2dd4bf;
+
+  --grad:      linear-gradient(120deg, #22d3ee, #7dd3fc 42%, #a78bfa);
+  --grad-soft: linear-gradient(120deg, rgba(34,211,238,.16), rgba(167,139,250,.16));
+
+  /* Type */
+  --font-display: 'Sora', 'Hind Siliguri', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body:    'Manrope', 'Hind Siliguri', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* Shape */
+  --r-xl: 28px;
+  --r-lg: 20px;
+  --r-md: 14px;
+  --r-sm: 10px;
+
+  --maxw: 1180px;
+  --nav-h: 74px;
+
+  --shadow-cyan: 0 30px 80px -40px rgba(34, 211, 238, 0.55);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+/* ---------- 2. Reset & base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.65;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+
+  /* ambient star dust painted with pure CSS */
+  background-image:
+    radial-gradient(1.4px 1.4px at 12% 18%, rgba(255,255,255,.42), transparent 60%),
+    radial-gradient(1.2px 1.2px at 78% 8%,  rgba(255,255,255,.34), transparent 60%),
+    radial-gradient(1.6px 1.6px at 34% 62%, rgba(125,211,252,.34), transparent 60%),
+    radial-gradient(1.2px 1.2px at 88% 44%, rgba(255,255,255,.28), transparent 60%),
+    radial-gradient(1.4px 1.4px at 56% 88%, rgba(167,139,250,.32), transparent 60%),
+    radial-gradient(1.1px 1.1px at 22% 84%, rgba(255,255,255,.26), transparent 60%),
+    radial-gradient(1200px 700px at 78% -10%, rgba(34, 211, 238, 0.10), transparent 62%),
+    radial-gradient(1000px 640px at 8% 108%, rgba(167, 139, 250, 0.10), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.12; margin: 0; letter-spacing: -0.02em; }
+p { margin: 0; }
+a { color: inherit; text-decoration: none; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+img, svg, canvas { display: block; max-width: 100%; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+::selection { background: rgba(34, 211, 238, 0.28); color: #fff; }
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Slim, themed scrollbars */
+* { scrollbar-width: thin; scrollbar-color: rgba(125, 211, 252, 0.35) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(125, 211, 252, 0.22); border-radius: 99px; border: 3px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: rgba(125, 211, 252, 0.4); }
+
+/* ---------- 3. Shared components ---------- */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 14px;
+}
+
+.lede {
+  color: var(--muted);
+  font-size: clamp(1rem, 1.4vw, 1.09rem);
+  max-width: 62ch;
+}
+
+.section {
+  position: relative;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: clamp(72px, 9vw, 128px) clamp(20px, 5vw, 40px);
+  scroll-margin-top: calc(var(--nav-h) + 8px);
+}
+
+.section__head { max-width: 720px; margin-bottom: clamp(36px, 5vw, 60px); }
+
+.section__head h2 {
+  font-size: clamp(1.9rem, 4.2vw, 3.1rem);
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.section__head h2 em {
+  font-style: normal;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 26px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  transition: transform .35s var(--ease), box-shadow .35s var(--ease),
+              border-color .35s var(--ease), background .35s var(--ease), color .35s var(--ease);
+  will-change: transform;
+}
+
+.btn--primary {
+  background: var(--grad);
+  color: #04121a;
+  box-shadow: 0 18px 45px -22px rgba(34, 211, 238, 0.85);
+}
+.btn--primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 26px 60px -22px rgba(34, 211, 238, 0.95);
+}
+
+.btn--ghost {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text);
+  backdrop-filter: blur(8px);
+}
+.btn--ghost:hover {
+  transform: translateY(-2px);
+  border-color: rgba(34, 211, 238, 0.5);
+  background: var(--surface-2);
+}
+
+.btn--sm { padding: 10px 20px; font-size: 0.86rem; }
+
+/* ---------- 4. Navigation ---------- */
+.nav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 60;
+  background: rgba(4, 6, 15, 0.55);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid transparent;
+  transition: background .4s var(--ease), border-color .4s var(--ease);
+}
+.nav.is-scrolled {
+  background: rgba(4, 6, 15, 0.82);
+  border-bottom-color: var(--line-soft);
+}
+
+.nav__inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  height: var(--nav-h);
+  padding: 0 clamp(20px, 5vw, 40px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.brand { display: inline-flex; align-items: center; gap: 12px; }
+
+.brand__mark {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(34, 211, 238, 0.5);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.35) inset;
+}
+.brand__mark::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1px dashed rgba(167, 139, 250, 0.35);
+  animation: spin 14s linear infinite;
+}
+.brand__mark span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--grad);
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.9);
+}
+
+.brand__text {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.98rem;
+  letter-spacing: 0.16em;
+}
+.brand__text em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+.nav__links {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2.4vw, 30px);
+}
+.nav__links > a:not(.btn) {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--muted);
+  position: relative;
+  padding: 6px 2px;
+  transition: color .3s var(--ease);
+}
+.nav__links > a:not(.btn)::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 100%;
+  bottom: 0;
+  height: 1.5px;
+  background: var(--grad);
+  transition: right .35s var(--ease);
+}
+.nav__links > a:not(.btn):hover { color: var(--text); }
+.nav__links > a:not(.btn):hover::after { right: 0; }
+
+.nav__toggle { display: none; width: 44px; height: 44px; position: relative; z-index: 2; }
+.nav__toggle span {
+  position: absolute;
+  left: 11px;
+  width: 22px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text);
+  transition: transform .35s var(--ease), opacity .25s var(--ease);
+}
+.nav__toggle span:nth-child(1) { top: 15px; }
+.nav__toggle span:nth-child(2) { top: 21px; }
+.nav__toggle span:nth-child(3) { top: 27px; }
+.nav__toggle.is-active span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.nav__toggle.is-active span:nth-child(2) { opacity: 0; }
+.nav__toggle.is-active span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+/* ---------- 5. Hero ---------- */
+.hero {
+  position: relative;
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  align-items: center;
+  gap: clamp(32px, 5vw, 72px);
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: calc(var(--nav-h) + clamp(28px, 5vw, 60px)) clamp(20px, 5vw, 40px) clamp(48px, 6vw, 84px);
+  scroll-margin-top: var(--nav-h);
+}
+
+.hero__grid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 178, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 178, 255, 0.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(78% 68% at 50% 42%, #000 25%, transparent 78%);
+  -webkit-mask-image: radial-gradient(78% 68% at 50% 42%, #000 25%, transparent 78%);
+}
+
+.hero__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+}
+.hero__glow--a {
+  width: 520px; height: 520px;
+  top: -120px; right: -80px;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.16), transparent 65%);
+}
+.hero__glow--b {
+  width: 460px; height: 460px;
+  bottom: -160px; left: -120px;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.15), transparent 65%);
+}
+
+.hero__content { position: relative; z-index: 1; }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: clamp(20px, 3vw, 30px);
+}
+.eyebrow__dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.55);
+  animation: ping 2.4s ease-out infinite;
+}
+
+.hero__title {
+  font-size: clamp(2.3rem, 5.6vw, 4.2rem);
+  font-weight: 800;
+  margin-bottom: clamp(18px, 2.6vw, 26px);
+}
+.hero__line { display: block; color: var(--text); }
+
+.hero__typed {
+  display: block;
+  min-height: 1.2em;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 24px rgba(34, 211, 238, 0.28));
+}
+.typed-text { white-space: pre-wrap; word-break: break-word; }
+
+.caret {
+  display: inline-block;
+  width: 3px;
+  height: 0.92em;
+  margin-left: 4px;
+  vertical-align: -0.08em;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--sky), var(--violet));
+  animation: blink 1.05s steps(1) infinite;
+}
+
+.hero__sub {
+  color: var(--muted);
+  font-size: clamp(1rem, 1.6vw, 1.14rem);
+  max-width: 52ch;
+  margin-bottom: clamp(26px, 3.4vw, 38px);
+}
+
+.hero__cta { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: clamp(34px, 4.4vw, 52px); }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: clamp(20px, 2.6vw, 28px);
+}
+.stats li { display: flex; flex-direction: column; gap: 2px; }
+.stats__value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.15rem, 2.1vw, 1.5rem);
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.stats__label {
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ---------- 6. Orbital visual ---------- */
+.hero__visual { position: relative; z-index: 1; display: grid; place-items: center; }
+
+.orbital {
+  position: relative;
+  width: min(520px, 92%);
+  aspect-ratio: 1 / 1;
+}
+.orbital canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.orbital__ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 178, 255, 0.16);
+}
+.orbital__ring--a { inset: 6%; box-shadow: 0 0 40px rgba(34, 211, 238, 0.06) inset; }
+.orbital__ring--b { inset: 20%; border-color: rgba(34, 211, 238, 0.2); }
+.orbital__ring--c {
+  inset: 34%;
+  border-style: dashed;
+  border-color: rgba(167, 139, 250, 0.3);
+  animation: spin 46s linear infinite;
+}
+
+.orbital__sweep {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+    transparent 0deg 300deg,
+    rgba(34, 211, 238, 0.0) 316deg,
+    rgba(34, 211, 238, 0.55) 352deg,
+    rgba(167, 139, 250, 0.45) 359deg,
+    transparent 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 68%, #000 69%, #000 71%, transparent 72%);
+  mask: radial-gradient(circle, transparent 68%, #000 69%, #000 71%, transparent 72%);
+  animation: spin 7s linear infinite;
+}
+
+.orbital__core {
+  position: absolute;
+  inset: 38%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, #bfe9ff 0%, #7dd3fc 16%, #22d3ee 38%, #6366f1 70%, #1e1b4b 100%);
+  box-shadow:
+    0 0 60px rgba(34, 211, 238, 0.5),
+    0 0 140px rgba(99, 102, 241, 0.35),
+    inset -10px -14px 40px rgba(4, 6, 15, 0.6);
+  animation: breathe 5.2s ease-in-out infinite;
+}
+.orbital__core-glow {
+  position: absolute;
+  inset: -46%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.32), transparent 62%);
+  animation: pulse 4.2s ease-out infinite;
+}
+
+.chip {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(7, 11, 26, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  white-space: nowrap;
+  box-shadow: 0 12px 30px -18px rgba(0, 0, 0, 0.9);
+  animation: float 7s ease-in-out infinite;
+}
+.chip i {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 10px var(--cyan);
+}
+.chip--top    { top: 0;    left: 50%; transform: translate(-50%, -50%); animation-delay: 0s; }
+.chip--right  { top: 50%;  right: 0;  transform: translate(50%, -50%);  animation-delay: 1.1s; }
+.chip--right i { background: var(--sky); box-shadow: 0 0 10px var(--sky); }
+.chip--bottom { bottom: 0; left: 50%; transform: translate(-50%, 50%);  animation-delay: 2.1s; }
+.chip--bottom i { background: var(--violet); box-shadow: 0 0 10px var(--violet); }
+.chip--left   { top: 50%;  left: 0;   transform: translate(-50%, -50%); animation-delay: 3.2s; }
+.chip--left i { background: var(--mint); box-shadow: 0 0 10px var(--mint); }
+
+/* ---------- 7. Ticker ---------- */
+.ticker {
+  border-block: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, rgba(11, 16, 36, 0.55), rgba(4, 6, 15, 0.2));
+  overflow: hidden;
+  padding: 15px 0;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.ticker__lane { display: flex; width: max-content; animation: slide 36s linear infinite; }
+.ticker__group { display: flex; flex-shrink: 0; }
+.ticker__group span {
+  display: inline-flex;
+  align-items: center;
+  gap: 26px;
+  padding-right: 26px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.ticker__group i {
+  font-style: normal;
+  color: var(--cyan);
+  opacity: 0.85;
+}
+
+/* ---------- 8. Capability cards ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(14px, 2vw, 22px);
+}
+
+.card {
+  position: relative;
+  padding: clamp(24px, 3vw, 32px);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(148, 178, 255, 0.055), rgba(148, 178, 255, 0.015));
+  overflow: hidden;
+  transition: transform .45s var(--ease), border-color .45s var(--ease), box-shadow .45s var(--ease);
+}
+.card::after {
+  content: "";
+  position: absolute;
+  inset: -40% 55% 55% -40%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.16), transparent 65%);
+  opacity: 0;
+  transition: opacity .5s var(--ease);
+  pointer-events: none;
+}
+.card:hover {
+  transform: translateY(-6px);
+  border-color: rgba(34, 211, 238, 0.42);
+  box-shadow: 0 34px 70px -46px rgba(34, 211, 238, 0.75);
+}
+.card:hover::after { opacity: 1; }
+
+.card__icon {
+  width: 52px; height: 52px;
+  border-radius: var(--r-md);
+  display: grid;
+  place-items: center;
+  margin-bottom: 20px;
+  color: var(--sky);
+  background: var(--grad-soft);
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  box-shadow: 0 0 26px rgba(34, 211, 238, 0.16) inset;
+}
+.card__icon svg { width: 26px; height: 26px; }
+
+.card__tag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--violet);
+  margin-bottom: 10px;
+}
+.card h3 { font-size: 1.16rem; font-weight: 700; margin-bottom: 10px; }
+.card__desc { color: var(--muted); font-size: 0.94rem; }
+
+/* ---------- 9. Reactor ---------- */
+.section--reactor { padding-top: clamp(40px, 6vw, 90px); }
+
+.reactor {
+  --state: var(--cyan);
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: clamp(28px, 4vw, 56px);
+  align-items: center;
+  padding: clamp(26px, 4vw, 46px);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(120% 130% at 12% 0%, rgba(148, 178, 255, 0.09), transparent 55%),
+    linear-gradient(180deg, rgba(11, 16, 36, 0.9), rgba(4, 6, 15, 0.9));
+  transition: box-shadow .6s var(--ease);
+  box-shadow: 0 40px 90px -60px var(--state);
+}
+.reactor.is-hear  { --state: var(--cyan); }
+.reactor.is-think { --state: var(--violet); }
+.reactor.is-act   { --state: var(--indigo); }
+.reactor.is-speak { --state: var(--mint); }
+
+.reactor__viz {
+  position: relative;
+  width: min(320px, 100%);
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+}
+.reactor__ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 178, 255, 0.2);
+  transition: border-color .6s var(--ease);
+}
+.reactor__ring--outer { inset: 0; border-style: dashed; animation: spin 38s linear infinite reverse; }
+.reactor__ring--mid   { inset: 14%; animation: spin 24s linear infinite; }
+
+.reactor.is-hear  .reactor__ring { border-color: rgba(34, 211, 238, 0.34); }
+.reactor.is-think .reactor__ring { border-color: rgba(167, 139, 250, 0.34); }
+.reactor.is-act   .reactor__ring { border-color: rgba(129, 140, 248, 0.34); }
+.reactor.is-speak .reactor__ring { border-color: rgba(45, 212, 191, 0.34); }
+
+.reactor__sweep {
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+    transparent 0deg 308deg,
+    rgba(34, 211, 238, 0.65) 354deg,
+    transparent 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 76%, #000 77%, #000 79%, transparent 80%);
+  mask: radial-gradient(circle, transparent 76%, #000 77%, #000 79%, transparent 80%);
+  animation: spin 5s linear infinite;
+  transition: background .6s var(--ease);
+}
+.reactor.is-hear  .reactor__sweep { background: conic-gradient(from 0deg, transparent 0deg 308deg, rgba(34, 211, 238, 0.65) 354deg, transparent 360deg); }
+.reactor.is-think .reactor__sweep { background: conic-gradient(from 0deg, transparent 0deg 308deg, rgba(167, 139, 250, 0.65) 354deg, transparent 360deg); }
+.reactor.is-act   .reactor__sweep { background: conic-gradient(from 0deg, transparent 0deg 308deg, rgba(129, 140, 248, 0.7) 354deg, transparent 360deg); }
+.reactor.is-speak .reactor__sweep { background: conic-gradient(from 0deg, transparent 0deg 308deg, rgba(45, 212, 191, 0.65) 354deg, transparent 360deg); }
+
+.reactor__core {
+  position: relative;
+  width: 62%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.16), rgba(4, 6, 15, 0.9) 62%);
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  box-shadow:
+    0 0 60px rgba(34, 211, 238, 0.34),
+    inset 0 0 40px rgba(34, 211, 238, 0.16);
+  transition: border-color .6s var(--ease), box-shadow .6s var(--ease);
+}
+.reactor.is-hear  .reactor__core { border-color: rgba(34, 211, 238, 0.45); box-shadow: 0 0 60px rgba(34, 211, 238, 0.34), inset 0 0 40px rgba(34, 211, 238, 0.16); }
+.reactor.is-think .reactor__core { border-color: rgba(167, 139, 250, 0.45); box-shadow: 0 0 60px rgba(167, 139, 250, 0.34), inset 0 0 40px rgba(167, 139, 250, 0.16); }
+.reactor.is-act   .reactor__core { border-color: rgba(129, 140, 248, 0.45); box-shadow: 0 0 60px rgba(129, 140, 248, 0.34), inset 0 0 40px rgba(129, 140, 248, 0.16); }
+.reactor.is-speak .reactor__core { border-color: rgba(45, 212, 191, 0.45); box-shadow: 0 0 60px rgba(45, 212, 191, 0.34), inset 0 0 40px rgba(45, 212, 191, 0.16); }
+
+.reactor__state-label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.1rem, 2.6vw, 1.5rem);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  transition: color .6s var(--ease);
+}
+.reactor.is-hear  .reactor__state-label { color: var(--cyan); }
+.reactor.is-think .reactor__state-label { color: var(--violet); }
+.reactor.is-act   .reactor__state-label { color: var(--indigo); }
+.reactor.is-speak .reactor__state-label { color: var(--mint); }
+
+.reactor__meta { display: flex; flex-direction: column; gap: 18px; }
+
+.steps { display: flex; flex-direction: column; gap: 8px; }
+.steps li {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 14px;
+  padding: 13px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background .35s var(--ease), border-color .35s var(--ease), transform .35s var(--ease);
+}
+.steps li:hover { background: var(--surface); border-color: var(--line-soft); transform: translateX(4px); }
+.steps li.is-active { background: var(--surface-2); border-color: var(--line); }
+.reactor.is-hear  .steps li.is-active { border-color: rgba(34, 211, 238, 0.4); }
+.reactor.is-think .steps li.is-active { border-color: rgba(167, 139, 250, 0.4); }
+.reactor.is-act   .steps li.is-active { border-color: rgba(129, 140, 248, 0.4); }
+.reactor.is-speak .steps li.is-active { border-color: rgba(45, 212, 191, 0.4); }
+
+.steps__idx {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--faint);
+}
+.steps li.is-active .steps__idx { color: var(--cyan); }
+.reactor.is-hear  .steps li.is-active .steps__idx { color: var(--cyan); }
+.reactor.is-think .steps li.is-active .steps__idx { color: var(--violet); }
+.reactor.is-act   .steps li.is-active .steps__idx { color: var(--indigo); }
+.reactor.is-speak .steps li.is-active .steps__idx { color: var(--mint); }
+
+.steps__label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.02rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.steps__hint { justify-self: end; font-size: 0.82rem; color: var(--faint); text-align: right; }
+
+.state-card {
+  position: relative;
+  padding: clamp(20px, 2.6vw, 28px);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(148, 178, 255, 0.07), rgba(148, 178, 255, 0.02));
+  overflow: hidden;
+  animation: cardIn .55s var(--ease) both;
+}
+.state-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--cyan);
+  box-shadow: 0 0 22px var(--cyan);
+}
+.reactor.is-hear  .state-card::before { background: var(--cyan);   box-shadow: 0 0 22px var(--cyan); }
+.reactor.is-think .state-card::before { background: var(--violet); box-shadow: 0 0 22px var(--violet); }
+.reactor.is-act   .state-card::before { background: var(--indigo); box-shadow: 0 0 22px var(--indigo); }
+.reactor.is-speak .state-card::before { background: var(--mint);   box-shadow: 0 0 22px var(--mint); }
+
+.state-card__kicker {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 8px;
+}
+.reactor.is-hear  .state-card__kicker { color: var(--cyan); }
+.reactor.is-think .state-card__kicker { color: var(--violet); }
+.reactor.is-act   .state-card__kicker { color: var(--indigo); }
+.reactor.is-speak .state-card__kicker { color: var(--mint); }
+
+.state-card h3 { font-size: 1.2rem; margin-bottom: 8px; }
+.state-card p { color: var(--muted); font-size: 0.95rem; }
+
+/* ---------- 10. Live console ---------- */
+.console {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(11, 16, 36, 0.95), rgba(4, 6, 15, 0.95));
+  overflow: hidden;
+  box-shadow: 0 50px 110px -70px rgba(34, 211, 238, 0.8);
+}
+
+.console__bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(148, 178, 255, 0.045);
+}
+.console__dots { display: inline-flex; gap: 7px; }
+.console__dots i { width: 11px; height: 11px; border-radius: 50%; }
+.console__dots i:nth-child(1) { background: #ff5f57; }
+.console__dots i:nth-child(2) { background: #febc2e; }
+.console__dots i:nth-child(3) { background: #28c840; }
+.console__title {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.console__badge {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.24em;
+  color: var(--cyan);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.console__body {
+  padding: clamp(18px, 2.6vw, 26px);
+  min-height: 340px;
+  font-family: var(--font-mono);
+  font-size: clamp(0.78rem, 1.5vw, 0.9rem);
+  line-height: 2.1;
+}
+
+.console__line { display: flex; gap: 16px; animation: lineIn .42s var(--ease) both; }
+.console__ts { color: var(--faint); flex-shrink: 0; }
+.console__text { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+
+.console__line.is-cmd   .console__text { color: var(--text); }
+.console__line.is-info  .console__text { color: var(--sky); }
+.console__line.is-ok    .console__text { color: var(--mint); }
+.console__line.is-warn  .console__text { color: #fbbf24; }
+
+.console__cursor {
+  color: var(--cyan);
+  animation: blink 1s steps(1) infinite;
+}
+
+/* ---------- 11. Footer ---------- */
+.footer {
+  border-top: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, rgba(7, 11, 26, 0.5), rgba(4, 6, 15, 0.9));
+  margin-top: clamp(30px, 5vw, 60px);
+}
+.footer__inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: clamp(38px, 5vw, 60px) clamp(20px, 5vw, 40px);
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: clamp(24px, 4vw, 48px);
+  align-items: start;
+}
+.footer__brand p { color: var(--faint); font-size: 0.9rem; margin-top: 14px; max-width: 46ch; }
+
+.footer__links { display: flex; flex-wrap: wrap; gap: 18px; justify-content: flex-end; }
+.footer__links a { color: var(--muted); font-size: 0.9rem; transition: color .3s var(--ease); }
+.footer__links a:hover { color: var(--cyan); }
+
+.footer__note {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+  text-transform: uppercase;
+}
+.footer__note span { color: var(--violet); }
+
+/* ---------- 12. Reveal-on-scroll ---------- */
+[star-reveal] {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity .85s var(--ease), transform .85s var(--ease);
+  will-change: opacity, transform;
+}
+[star-reveal].is-visible { opacity: 1; transform: none; }
+
+/* ---------- 13. Keyframes ---------- */
+@keyframes spin   { to { transform: rotate(360deg); } }
+@keyframes blink  { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+@keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes pulse {
+  0%   { transform: scale(0.82); opacity: 0.85; }
+  70%  { transform: scale(1.25); opacity: 0; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+@keyframes ping {
+  0%   { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.55); }
+  75%  { box-shadow: 0 0 0 10px rgba(34, 211, 238, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
+}
+@keyframes float {
+  0%, 100% { translate: 0 0; }
+  50%      { translate: 0 -9px; }
+}
+@keyframes slide { to { transform: translateX(-50%); } }
+@keyframes lineIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---------- 14. Responsive ---------- */
+@media (max-width: 1024px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero { grid-template-columns: 1fr 0.85fr; }
+}
+
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding-top: calc(var(--nav-h) + 40px);
+  }
+  .hero__visual { order: 2; margin-top: clamp(20px, 5vw, 36px); }
+  .orbital { width: min(430px, 88%); }
+
+  .reactor { grid-template-columns: 1fr; }
+  .steps__hint { display: none; }
+
+  /* Mobile nav */
+  .nav__toggle { display: block; }
+  .nav__links {
+    position: absolute;
+    top: var(--nav-h);
+    left: 0; right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 14px 20px 22px;
+    background: rgba(4, 6, 15, 0.96);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--line);
+    transform: translateY(-12px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform .35s var(--ease), opacity .35s var(--ease), visibility .35s;
+  }
+  .nav.is-open .nav__links {
+    transform: none;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .nav__links > a:not(.btn) { padding: 13px 4px; font-size: 1rem; border-bottom: 1px solid var(--line-soft); }
+  .nav__links > a.btn { margin-top: 12px; }
+}
+
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 10px; }
+  .footer__inner { grid-template-columns: 1fr; }
+  .footer__links { justify-content: flex-start; }
+  .console__body { min-height: 300px; }
+  .console__line { gap: 10px; }
+}
+
+@media (max-width: 460px) {
+  .chip { display: none; }
+  .hero__cta .btn { width: 100%; }
+}
+
+/* ---------- 15. Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html { scroll-behavior: auto; }
+  [star-reveal] { opacity: 1; transform: none; }
+  .ticker__lane { animation: none; }
+}
+</style>
+</head>
+
+<body ng-controller="ShowcaseCtrl as vm">
+
+  <!-- ============ NAV ============ -->
+  <header class="nav" ng-class="{'is-scrolled': vm.scrolled, 'is-open': vm.menuOpen}">
+    <div class="nav__inner">
+      <a class="brand" href="#top" ng-click="vm.menuOpen = false">
+        <span class="brand__mark" aria-hidden="true"><span></span></span>
+        <span class="brand__text">STAR<em>ASSISTANT</em></span>
+      </a>
+
+      <button class="nav__toggle" ng-class="{'is-active': vm.menuOpen}"
+              ng-click="vm.menuOpen = !vm.menuOpen"
+              aria-label="Toggle navigation" aria-expanded="{{vm.menuOpen ? 'true' : 'false'}}">
+        <span></span><span></span><span></span>
+      </button>
+
+      <nav class="nav__links">
+        <a ng-repeat="l in vm.navLinks" ng-href="{{l.href}}" ng-click="vm.menuOpen = false">{{l.label}}</a>
+        <a class="btn btn--sm btn--primary" ng-href="#show" ng-click="vm.menuOpen = false">Watch it live</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ============ HERO / ORBITAL SHOW ============ -->
+    <section class="hero">
+      <div class="hero__grid" aria-hidden="true"></div>
+      <div class="hero__glow hero__glow--a" aria-hidden="true"></div>
+      <div class="hero__glow hero__glow--b" aria-hidden="true"></div>
+
+      <div class="hero__content" star-reveal="0">
+        <p class="eyebrow">
+          <span class="eyebrow__dot" aria-hidden="true"></span>
+          Voice-first · বাংলা + English · Local-first core
+        </p>
+
+        <h1 class="hero__title">
+          <span class="hero__line">The assistant that</span>
+          <span class="hero__typed">
+            <span class="typed-text">{{vm.typed}}</span><span class="caret" aria-hidden="true"></span>
+          </span>
+        </h1>
+
+        <p class="hero__sub">
+          Star Assistant blends a cinematic HUD with a type-safe automation core —
+          it listens, reasons, and acts with a safety governor around every command.
+        </p>
+
+        <div class="hero__cta">
+          <a class="btn btn--primary" ng-href="#show">See it in motion</a>
+          <a class="btn btn--ghost" ng-href="#capabilities">Explore capabilities</a>
+        </div>
+
+        <ul class="stats">
+          <li ng-repeat="s in vm.stats">
+            <span class="stats__value">{{s.value}}</span>
+            <span class="stats__label">{{s.label}}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="hero__visual" star-reveal="120">
+        <div class="orbital" aria-hidden="true">
+          <canvas star-field></canvas>
+
+          <div class="orbital__sweep"></div>
+          <div class="orbital__ring orbital__ring--a"></div>
+          <div class="orbital__ring orbital__ring--b"></div>
+          <div class="orbital__ring orbital__ring--c"></div>
+
+          <div class="orbital__core">
+            <span class="orbital__core-glow"></span>
+          </div>
+
+          <span class="chip chip--top"><i></i>VOICE</span>
+          <span class="chip chip--right"><i></i>OCR VISION</span>
+          <span class="chip chip--bottom"><i></i>MEMORY</span>
+          <span class="chip chip--left"><i></i>SKILLS</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TICKER ============ -->
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker__lane">
+        <div class="ticker__group" ng-repeat="rep in [0, 1]">
+          <span ng-repeat="item in vm.ticker">{{item}}<i>✦</i></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CAPABILITIES ============ -->
+    <section class="section" id="capabilities">
+      <div class="section__head" star-reveal="0">
+        <p class="kicker">// Capabilities</p>
+        <h2>Everything an assistant should do — <em>governed</em>.</h2>
+        <p class="lede">
+          A layered, typed architecture keeps every action explainable: hear the request,
+          plan it with memory, execute through checked skills, then respond.
+        </p>
+      </div>
+
+      <div class="grid">
+        <article class="card" ng-repeat="f in vm.features" star-reveal="{{$index * 70}}">
+          <div class="card__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path ng-attr-d="{{f.icon}}"></path>
+            </svg>
+          </div>
+          <p class="card__tag">{{f.tag}}</p>
+          <h3>{{f.title}}</h3>
+          <p class="card__desc">{{f.desc}}</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ REACTOR STATES ============ -->
+    <section class="section section--reactor" id="reactor">
+      <div class="section__head" star-reveal="0">
+        <p class="kicker">// The reactor</p>
+        <h2>One reactor. <em>Four states.</em></h2>
+        <p class="lede">
+          Every interaction moves through the same cinematic loop — visually broadcast
+          by the HUD so you always know what the assistant is doing.
+        </p>
+      </div>
+
+      <div class="reactor is-hear" ng-class="'is-' + vm.state.key" star-reveal="80">
+        <div class="reactor__viz">
+          <div class="reactor__ring reactor__ring--outer"></div>
+          <div class="reactor__ring reactor__ring--mid"></div>
+          <div class="reactor__sweep"></div>
+          <div class="reactor__core">
+            <span class="reactor__state-label">{{vm.state.label}}</span>
+          </div>
+        </div>
+
+        <div class="reactor__meta">
+          <ol class="steps">
+            <li ng-repeat="s in vm.states"
+                ng-class="{'is-active': s.key === vm.state.key}"
+                ng-click="vm.setState($index)"
+                role="button" tabindex="0"
+                ng-keydown="vm.setStateFromKey($event, $index)">
+              <span class="steps__idx">0{{$index + 1}}</span>
+              <span class="steps__label">{{s.label}}</span>
+              <span class="steps__hint">{{s.hint}}</span>
+            </li>
+          </ol>
+
+          <div class="state-card" ng-repeat="s in [vm.state] track by s.key">
+            <p class="state-card__kicker">{{s.mode}}</p>
+            <h3>{{s.title}}</h3>
+            <p>{{s.blurb}}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LIVE AUTO-TYPED SHOW ============ -->
+    <section class="section" id="show">
+      <div class="section__head" star-reveal="0">
+        <p class="kicker">// Live sequence</p>
+        <h2>Watch it <em>think out loud</em>.</h2>
+        <p class="lede">
+          An auto-typed session replay: boot the HUD, mount the voice pipeline,
+          sync memory, arm the safety governor — then ask anything.
+        </p>
+      </div>
+
+      <div class="console" star-reveal="80">
+        <div class="console__bar">
+          <span class="console__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="console__title">star-assistant — hud session</span>
+          <span class="console__badge">REPLAY</span>
+        </div>
+        <div class="console__body">
+          <p class="console__line" ng-repeat="l in vm.consoleLines | limitTo: vm.consoleStep + 1 track by $index"
+             ng-class="'is-' + l.kind">
+            <span class="console__ts">{{l.t}}</span><span class="console__text">{{l.text}}</span>
+          </p>
+          <p class="console__line is-cursor" ng-if="vm.consoleStep >= 0">
+            <span class="console__ts">&nbsp;</span><span class="console__cursor">▍</span>
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="footer__brand">
+        <a class="brand" href="#top">
+          <span class="brand__mark" aria-hidden="true"><span></span></span>
+          <span class="brand__text">STAR<em>ASSISTANT</em></span>
+        </a>
+        <p>A premium desktop-companion experience — cinematic HUD up front, type-safe automation underneath.</p>
+      </div>
+
+      <nav class="footer__links">
+        <a ng-repeat="l in vm.navLinks" ng-href="{{l.href}}">{{l.label}}</a>
+      </nav>
+
+      <p class="footer__note">
+        AngularJS showcase · <span>Bengali + English</span> · MIT licensed
+      </p>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.8.3/angular.min.js"></script>
+<script>
+/* =========================================================================
+   STAR ASSISTANT — Cinematic Orbital Showcase
+   AngularJS 1.8 application: typewriter hero, reactor state machine,
+   auto-typed console replay, canvas starfield + orbiting satellites.
+   ========================================================================= */
+
+(function () {
+  'use strict';
+
+  angular
+    .module('starShowcase', [])
+    .controller('ShowcaseCtrl', ShowcaseCtrl)
+    .directive('starReveal', starRevealDirective)
+    .directive('starField', starFieldDirective);
+
+  ShowcaseCtrl.$inject = ['$scope', '$window', '$interval', '$timeout'];
+
+  /* ---------------------------------------------------------------------
+     Main showcase controller
+     --------------------------------------------------------------------- */
+  function ShowcaseCtrl($scope, $window, $interval, $timeout) {
+    var vm = this;
+
+    /* ----- Navigation ----- */
+    vm.menuOpen = false;
+    vm.scrolled = false;
+
+    vm.navLinks = [
+      { label: 'Capabilities', href: '#capabilities' },
+      { label: 'Reactor',      href: '#reactor' },
+      { label: 'Live show',    href: '#show' }
+    ];
+
+    /* ----- Hero typewriter ----- */
+    var PHRASES = [
+      'understands বাংলা & English',
+      'moves your desktop by voice',
+      'remembers what matters',
+      'acts only when it is safe'
+    ];
+
+    var phraseIndex = 0;
+    var charIndex = 0;
+    var deleting = false;
+    var typeTimer = null;
+
+    vm.typed = '';
+
+    function scheduleType(delay) {
+      typeTimer = $timeout(tickType, delay);
+    }
+
+    function tickType() {
+      var phrase = PHRASES[phraseIndex];
+
+      if (!deleting) {
+        charIndex++;
+        vm.typed = phrase.slice(0, charIndex);
+        if (charIndex >= phrase.length) {
+          deleting = true;
+          return scheduleType(1750);
+        }
+        return scheduleType(55 + Math.random() * 55);
+      }
+
+      charIndex--;
+      vm.typed = phrase.slice(0, charIndex);
+      if (charIndex <= 0) {
+        deleting = false;
+        phraseIndex = (phraseIndex + 1) % PHRASES.length;
+        return scheduleType(430);
+      }
+      scheduleType(26);
+    }
+
+    scheduleType(650);
+
+    /* ----- Hero stats ----- */
+    vm.stats = [
+      { value: '04',  label: 'HUD reactor states' },
+      { value: '02',  label: 'Languages, one flow' },
+      { value: '100%', label: 'Local-first core' },
+      { value: '00',  label: 'Blind actions' }
+    ];
+
+    /* ----- Ticker ----- */
+    vm.ticker = [
+      'Listen', 'Reason', 'Respond', 'Plan', 'Act',
+      'Remember', 'Safeguard', 'Voice-first', 'Bengali + English'
+    ];
+
+    /* ----- Capability cards ----- */
+    vm.features = [
+      {
+        tag: 'core',
+        title: 'Voice Loop',
+        desc: 'Bengali or English speech in, intent out — a continuous listen → reason → respond cycle with low-latency TTS.',
+        icon: 'M3 12h2M7 8v8M11 4v16M15 7v10M19 10v4M21.5 12h.01'
+      },
+      {
+        tag: 'perception',
+        title: 'Screen Reading',
+        desc: 'Point it at any window and it reads the interface back — OCR with Bengali text support for real tasks.',
+        icon: 'M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12zM12 9.4a2.6 2.6 0 100 5.2 2.6 2.6 0 000-5.2'
+      },
+      {
+        tag: 'context',
+        title: 'Memory Core',
+        desc: 'Preferences and past sessions persist, so the assistant personalizes instead of starting cold every time.',
+        icon: 'M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'
+      },
+      {
+        tag: 'governance',
+        title: 'Safety Governor',
+        desc: 'Every action passes layered capability checks; destructive moves stay in dry-run until you confirm.',
+        icon: 'M12 3l7.5 3.2v5.1c0 4.6-3.2 8.6-7.5 10.2C7.7 19.9 4.5 15.9 4.5 11.3V6.2L12 3zM9 12l2.2 2.2 4.4-4.4'
+      },
+      {
+        tag: 'automation',
+        title: 'Skill Registry',
+        desc: 'Typed skills for volume, brightness, app launch, screenshots and YouTube — extended without touching the core.',
+        icon: 'M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z'
+      },
+      {
+        tag: 'brain',
+        title: 'LLM Routing',
+        desc: 'Local-first model routing with optional cloud fallback — your data stays on-device unless you say otherwise.',
+        icon: 'M5 7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM19 7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM12 21.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM5 7.5v4.5a4 4 0 004 4h6a4 4 0 014-4V7.5M12 16.5v2.5'
+      }
+    ];
+
+    /* ----- Reactor states ----- */
+    vm.states = [
+      {
+        key: 'hear',
+        label: 'Hear',
+        hint: 'capture intent',
+        mode: 'state 01 — input',
+        title: 'Capture & understand',
+        blurb: 'The mic stream is transcribed in Bengali or English and the intent is classified locally — no round-trip, no waiting.'
+      },
+      {
+        key: 'think',
+        label: 'Think',
+        hint: 'plan with memory',
+        mode: 'state 02 — reasoning',
+        title: 'Plan with memory',
+        blurb: 'The reasoning core drafts a plan, recalls your past preferences, and previews exactly what it intends to do.'
+      },
+      {
+        key: 'act',
+        label: 'Act',
+        hint: 'guarded execution',
+        mode: 'state 03 — execution',
+        title: 'Execute with guardrails',
+        blurb: 'Type-safe skills run inside the automation core — every action capability-checked, logged and reversible.'
+      },
+      {
+        key: 'speak',
+        label: 'Speak',
+        hint: 'respond',
+        mode: 'state 04 — output',
+        title: 'Respond naturally',
+        blurb: 'The HUD pulses back to life and speaks the result with low-latency TTS — concise, in your language.'
+      }
+    ];
+
+    vm.stateIndex = 0;
+    vm.state = vm.states[0];
+
+    function advance(delta) {
+      var n = vm.states.length;
+      vm.stateIndex = (vm.stateIndex + delta + n) % n;
+      vm.state = vm.states[vm.stateIndex];
+    }
+
+    vm.setState = function (index) {
+      advance(index - vm.stateIndex);
+    };
+
+    vm.setStateFromKey = function (evt, index) {
+      var key = evt && evt.key;
+      if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
+        if (evt.preventDefault) { evt.preventDefault(); }
+        vm.setState(index);
+      }
+    };
+
+    var stateTimer = $interval(function () { advance(1); }, 2800);
+
+    /* ----- Live auto-typed console replay ----- */
+    vm.consoleLines = [
+      { t: '00:00.3', text: '$ star --hud --lang=bn,en',                     kind: 'cmd'  },
+      { t: '00:00.9', text: '▸ reactor online :: HEAR',                      kind: 'info' },
+      { t: '00:01.4', text: '▸ voice pipeline ready · 48kHz capture',        kind: ''     },
+      { t: '00:02.0', text: '▸ memory graph synced · preferences loaded',    kind: ''     },
+      { t: '00:02.6', text: '▸ safety governor armed · dry-run default',     kind: 'warn' },
+      { t: '00:03.1', text: '▸ skills mounted :: volume · ocr · launch',     kind: ''     },
+      { t: '00:03.8', text: '✓ ready — বলুন, কী করব আপনার জন্য?',            kind: 'ok'   }
+    ];
+
+    vm.consoleStep = -1;
+
+    var holdTicks = 0;
+    var CONSOLE_TICK = 650;
+    var CONSOLE_HOLD = 6;
+
+    var consoleTimer = $interval(function () {
+      if (vm.consoleStep < vm.consoleLines.length - 1) {
+        vm.consoleStep++;
+        holdTicks = 0;
+      } else {
+        holdTicks++;
+        if (holdTicks >= CONSOLE_HOLD) {
+          vm.consoleStep = -1;   // clear the screen and replay
+          holdTicks = 0;
+        }
+      }
+    }, CONSOLE_TICK);
+
+    /* ----- Nav scroll state ----- */
+    var onScroll = function () {
+      $scope.$evalAsync(function () {
+        vm.scrolled = ($window.scrollY || $window.pageYOffset || 0) > 8;
+      });
+    };
+
+    // jqLite's .on() has no options argument, so bind passively natively.
+    $window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    /* ----- Teardown ----- */
+    $scope.$on('$destroy', function () {
+      $timeout.cancel(typeTimer);
+      $interval.cancel(stateTimer);
+      $interval.cancel(consoleTimer);
+      $window.removeEventListener('scroll', onScroll);
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     star-reveal — reveal elements when they scroll into view
+     Attribute value (interpolated) becomes the stagger delay in ms.
+     --------------------------------------------------------------------- */
+  function starRevealDirective() {
+    return {
+      restrict: 'A',
+      link: function (scope, element, attrs) {
+        var el = element[0];
+
+        attrs.$observe('starReveal', function (value) {
+          var delay = parseFloat(value);
+          el.style.transitionDelay = isNaN(delay) ? '0ms' : delay + 'ms';
+        });
+
+        if (!('IntersectionObserver' in window)) {
+          element.addClass('is-visible');
+          return;
+        }
+
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              element.addClass('is-visible');
+              io.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+
+        io.observe(el);
+
+        scope.$on('$destroy', function () { io.disconnect(); });
+      }
+    };
+  }
+
+  /* ---------------------------------------------------------------------
+     star-field — canvas starfield + orbiting satellites around the core
+     Parallax on pointer, paused when the tab is hidden,
+     static frame when the user prefers reduced motion.
+     --------------------------------------------------------------------- */
+  function starFieldDirective() {
+    return {
+      restrict: 'A',
+      link: function (scope, element) {
+        var canvas = element[0];
+        if (!canvas || !canvas.getContext) { return; }
+
+        var ctx = canvas.getContext('2d');
+        if (!ctx) { return; }
+
+        var reduced = false;
+        try {
+          reduced = window.matchMedia &&
+                    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        } catch (e) { /* older browsers — keep animating */ }
+
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        var w = 0;
+        var h = 0;
+
+        var stars = [];
+        var sats = [];
+
+        var rafId = 0;
+        var lastTime = 0;
+        var running = false;
+
+        var pointer = { x: 0, y: 0 };
+        var target = { x: 0, y: 0 };
+
+        var SAT_COLORS = [
+          [34, 211, 238],   // cyan
+          [167, 139, 250],  // violet
+          [125, 211, 252],  // sky
+          [45, 212, 191]    // mint
+        ];
+
+        function rgba(c, alpha) {
+          return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + alpha + ')';
+        }
+
+        function build() {
+          var count = Math.max(34, Math.min(150, Math.round((w * h) / 2600)));
+          stars = [];
+          for (var i = 0; i < count; i++) {
+            stars.push({
+              x: Math.random() * w,
+              y: Math.random() * h,
+              r: Math.random() * 1.3 + 0.3,
+              a: Math.random() * 0.5 + 0.22,
+              phase: Math.random() * Math.PI * 2,
+              tw: 0.0009 + Math.random() * 0.0016,
+              depth: 0.2 + Math.random() * 0.8
+            });
+          }
+
+          // Radii mirror the CSS rings (inset 6% / 20% / 34% of the box).
+          var base = Math.min(w, h);
+          sats = [
+            { rad: base * 0.44, ang: -Math.PI / 2,     spd:  0.00042, color: SAT_COLORS[0], size: 2.6, trail: 15 },
+            { rad: base * 0.44, ang:  Math.PI * 0.72,  spd:  0.00042, color: SAT_COLORS[2], size: 1.8, trail: 10 },
+            { rad: base * 0.30, ang:  Math.PI / 2,     spd: -0.00064, color: SAT_COLORS[1], size: 2.4, trail: 13 },
+            { rad: base * 0.30, ang:  0,               spd: -0.00064, color: SAT_COLORS[3], size: 1.6, trail: 9  },
+            { rad: base * 0.16, ang:  Math.PI,         spd:  0.00098, color: SAT_COLORS[0], size: 1.9, trail: 8  }
+          ];
+        }
+
+        function resize() {
+          var rect = canvas.getBoundingClientRect();
+          var nw = Math.max(1, Math.round(rect.width));
+          var nh = Math.max(1, Math.round(rect.height));
+          if (nw === w && nh === h) { return; }
+
+          w = nw;
+          h = nh;
+          canvas.width = Math.round(w * dpr);
+          canvas.height = Math.round(h * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          build();
+
+          if (reduced) { draw(0); }
+        }
+
+        function draw(dt) {
+          ctx.clearRect(0, 0, w, h);
+
+          pointer.x += (target.x - pointer.x) * 0.06;
+          pointer.y += (target.y - pointer.y) * 0.06;
+
+          var i;
+          var st;
+          var s;
+          var step;
+
+          /* stars */
+          for (i = 0; i < stars.length; i++) {
+            st = stars[i];
+            if (dt) { st.phase += st.tw * dt; }
+
+            var twinkle = 0.62 + 0.38 * Math.sin(st.phase);
+            var ox = pointer.x * st.depth * 14;
+            var oy = pointer.y * st.depth * 14;
+
+            ctx.globalAlpha = st.a * twinkle;
+            ctx.fillStyle = '#cfe6ff';
+            ctx.beginPath();
+            ctx.arc(st.x + ox, st.y + oy, st.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+
+          var cx = w / 2;
+          var cy = h / 2;
+
+          /* orbiting satellites with glowing trails */
+          for (i = 0; i < sats.length; i++) {
+            s = sats[i];
+            if (dt) { s.ang += s.spd * dt; }
+
+            step = s.spd >= 0 ? -1 : 1;
+
+            for (var t = 1; t <= s.trail; t++) {
+              var ta = s.ang + step * 0.026 * t;
+              var fade = (1 - t / (s.trail + 1)) * 0.5;
+
+              ctx.globalAlpha = fade;
+              ctx.fillStyle = rgba(s.color, 1);
+              ctx.beginPath();
+              ctx.arc(cx + Math.cos(ta) * s.rad, cy + Math.sin(ta) * s.rad,
+                      Math.max(0.5, s.size * (1 - t / (s.trail + 2))), 0, Math.PI * 2);
+              ctx.fill();
+            }
+
+            var hx = cx + Math.cos(s.ang) * s.rad;
+            var hy = cy + Math.sin(s.ang) * s.rad;
+
+            ctx.globalAlpha = 0.35;
+            ctx.shadowColor = rgba(s.color, 0.95);
+            ctx.shadowBlur = 18;
+            ctx.fillStyle = rgba(s.color, 1);
+            ctx.beginPath();
+            ctx.arc(hx, hy, s.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(hx, hy, Math.max(0.8, s.size * 0.42), 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.globalAlpha = 1;
+        }
+
+        function frame(now) {
+          if (!running) { return; }
+          var dt = Math.min(48, now - (lastTime || now));
+          lastTime = now;
+          draw(dt);
+          rafId = window.requestAnimationFrame(frame);
+        }
+
+        function start() {
+          if (running || reduced) { return; }
+          running = true;
+          lastTime = 0;
+          rafId = window.requestAnimationFrame(frame);
+        }
+
+        function stop() {
+          running = false;
+          if (rafId) { window.cancelAnimationFrame(rafId); }
+          rafId = 0;
+        }
+
+        function onPointer(evt) {
+          var rect = canvas.getBoundingClientRect();
+          if (!rect.width || !rect.height) { return; }
+          target.x = Math.max(-1, Math.min(1, ((evt.clientX - rect.left) / rect.width) * 2 - 1));
+          target.y = Math.max(-1, Math.min(1, ((evt.clientY - rect.top) / rect.height) * 2 - 1));
+        }
+
+        function onVisibility() {
+          if (document.hidden) { stop(); } else { start(); }
+        }
+
+        /* wire up */
+        resize();
+
+        if (reduced) {
+          draw(0);
+        } else {
+          start();
+          window.addEventListener('mousemove', onPointer, { passive: true });
+        }
+
+        document.addEventListener('visibilitychange', onVisibility);
+
+        var resizeObserver = null;
+        if ('ResizeObserver' in window) {
+          resizeObserver = new ResizeObserver(function () {
+            resize();
+            if (reduced) { draw(0); }
+          });
+          resizeObserver.observe(canvas);
+        } else {
+          window.addEventListener('resize', resize);
+        }
+
+        // re-measure once layout (fonts, grid) has settled
+        window.requestAnimationFrame(resize);
+
+        scope.$on('$destroy', function () {
+          stop();
+          window.removeEventListener('mousemove', onPointer);
+          window.removeEventListener('resize', resize);
+          document.removeEventListener('visibilitychange', onVisibility);
+          if (resizeObserver) { resizeObserver.disconnect(); }
+        });
+      }
+    };
+  }
+
+})();
+</script>
+</body>
+</html>
